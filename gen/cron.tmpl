@@ -1,0 +1,5 @@
+# Generated; do not edit
+{{- range .Regions}}
+CRON_TZ={{.Timezone}}
+{{.UpdateSchedule}} cragcast /usr/local/bin/cragcast scrape --region {{.Id}} --config {{$.ConfigPath}}
+{{- end}}
