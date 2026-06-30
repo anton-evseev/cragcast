@@ -1,0 +1,6 @@
+bin: /usr/local/bin/cragcast
+data: ./data
+addr: ":8090"
+user: cragcast
+regions:
+  - seattle

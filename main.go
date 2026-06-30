@@ -4,6 +4,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 
@@ -45,36 +46,60 @@ func run(args []string) error {
 		return err
 	}
 
+	// Anchor config-relative paths (the regions dir, the data dir, and the
+	// config path baked into generated units) to the config file's own
+	// directory, so every command works regardless of the working directory it
+	// is launched from — cron and systemd set none.
+	absConfig, err := filepath.Abs(*configPath)
+	if err != nil {
+		return err
+	}
+	configDir := filepath.Dir(absConfig)
+	dataDir := resolveDir(configDir, cfg.Data)
+
 	switch cmd {
 	case "gen-cron":
-		return gen.RunCron(gen.CronOptions{ConfigPath: *configPath, Regions: cfg.Regions})
+		regions, err := loadRegions(configDir, cfg.Regions)
+		if err != nil {
+			return err
+		}
+		return gen.RunCron(gen.CronOptions{ConfigPath: absConfig, Bin: cfg.Bin, User: cfg.User, Regions: regions})
 	case "gen-systemd":
-		return gen.RunSystemd(gen.SystemdOptions{ConfigPath: *configPath})
+		return gen.RunSystemd(gen.SystemdOptions{ConfigPath: absConfig, Bin: cfg.Bin, User: cfg.User})
 	case "scrape":
-		regions := cfg.Regions
+		regionIds := cfg.Regions
 		if *region != "" {
-			r, ok := findRegion(cfg.Regions, *region)
-			if !ok {
-				return fmt.Errorf("region not found: %s", *region)
-			}
-			regions = []config.Region{r}
+			regionIds = []string{*region}
 		}
-		return scrape.Run(scrape.ScrapeOptions{Regions: regions, DataDir: "./data"})
+		regions, err := loadRegions(configDir, regionIds)
+		if err != nil {
+			return err
+		}
+		return scrape.Run(scrape.ScrapeOptions{Regions: regions, DataDir: dataDir})
 	case "serve":
-		ids := make([]string, len(cfg.Regions))
-		for i, r := range cfg.Regions {
-			ids[i] = r.Id
-		}
-		return serve.Run(serve.ServeOptions{Regions: ids, DataDir: "./data", Addr: ":8090"})
+		return serve.Run(serve.ServeOptions{Regions: cfg.Regions, DataDir: dataDir, Addr: cfg.Addr})
 	}
 	return nil
 }
 
-func findRegion(regions []config.Region, id string) (config.Region, bool) {
-	for _, r := range regions {
-		if r.Id == id {
-			return r, true
+func loadRegions(configDir string, regionIds []string) ([]config.Region, error) {
+	regions := make([]config.Region, len(regionIds))
+	for i, id := range regionIds {
+		path := filepath.Join(configDir, "regions", id+".yml")
+		r, err := config.LoadRegionConfig(path)
+		if err != nil {
+			return nil, err
 		}
+		regions[i] = r
 	}
-	return config.Region{}, false
+	return regions, nil
+}
+
+// resolveDir makes a config-relative path absolute by anchoring it to the
+// config file's directory; an already-absolute path is returned unchanged.
+func resolveDir(configDir, p string) string {
+	if filepath.IsAbs(p) {
+		return p
+	}
+	return filepath.Join(configDir, p)
 }

@@ -22,11 +22,15 @@ var (
 
 type CronOptions struct {
 	ConfigPath string
+	Bin        string
+	User       string
 	Regions    []config.Region
 }
 
 type SystemdOptions struct {
 	ConfigPath string
+	Bin        string
+	User       string
 }
 
 func RunCron(o CronOptions) error {
