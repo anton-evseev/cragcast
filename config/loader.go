@@ -17,6 +17,22 @@ type Region struct {
 	Name           string `yaml:"name"`
 	Timezone       string `yaml:"timezone"`
 	UpdateSchedule string `yaml:"update_schedule"`
+	Areas          []Area `yaml:"areas"`
+}
+
+type Area struct {
+	Name  string `yaml:"name"`
+	Drive string `yaml:"drive"`
+	Crags []Crag `yaml:"crags"`
+}
+
+type Crag struct {
+	Name    string  `yaml:"name"`
+	Lat     float64 `yaml:"lat"`
+	Lon     float64 `yaml:"lon"`
+	Rock    string  `yaml:"rock"`
+	Aspect  string  `yaml:"aspect"`
+	Seepage bool    `yaml:"seepage"`
 }
 
 func decodeConfig(r io.Reader) (Config, error) {
@@ -37,3 +53,5 @@ func LoadConfig(path string) (Config, error) {
 	defer f.Close()
 	return decodeConfig(f)
 }
+
+// TODO: validation

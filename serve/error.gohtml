@@ -1,4 +1,109 @@
-<head></head>
-<body>
-    Error
-</body>
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>{{.Status}} — CragCast</title>
+        <style>
+            :root {
+                --page: #ffffff;
+                --text: #14161a;
+                --muted: #62686f;
+                --hair: rgba(20, 22, 26, 0.1);
+                --go-fg: #2c6b2e;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --page: #0e1014;
+                    --text: #e7e9ec;
+                    --muted: #969ca4;
+                    --hair: rgba(255, 255, 255, 0.1);
+                    --go-fg: #93d79c;
+                }
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+            html,
+            body {
+                height: 100%;
+            }
+            body {
+                margin: 0;
+                background: var(--page);
+                color: var(--text);
+                font:
+                    15px/1.6 system-ui,
+                    -apple-system,
+                    "Segoe UI",
+                    Roboto,
+                    sans-serif;
+                -webkit-font-smoothing: antialiased;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+                padding: 24px;
+            }
+
+            a {
+                color: var(--go-fg);
+                text-decoration: none;
+            }
+            a:hover {
+                text-decoration: underline;
+            }
+
+            .wordmark {
+                font-size: 19px;
+                font-weight: 650;
+                letter-spacing: -0.02em;
+                margin-bottom: 32px;
+            }
+            .wordmark span {
+                color: var(--go-fg);
+            }
+            .wordmark a {
+                color: var(--text);
+            }
+            .wordmark a:hover {
+                text-decoration: none;
+            }
+
+            .status {
+                font-size: 52px;
+                font-weight: 650;
+                line-height: 1;
+                color: var(--muted);
+                font-variant-numeric: tabular-nums;
+            }
+            .message {
+                font-size: 16px;
+                margin: 14px 0 0;
+                max-width: 30ch;
+            }
+            .back {
+                margin-top: 28px;
+                font-size: 14px;
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--text);
+                outline-offset: 2px;
+                border-radius: 4px;
+            }
+        </style>
+    </head>
+    <body>
+        <div class="wordmark">
+            <a href="/">Crag<span>Cast</span></a>
+        </div>
+
+        <div class="status">{{.Status}}</div>
+        <p class="message">{{.Message}}</p>
+
+        <a class="back" href="/">&larr; Back to forecast</a>
+    </body>
+</html>

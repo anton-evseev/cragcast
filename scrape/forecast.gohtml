@@ -1,4 +1,465 @@
-<head></head>
-<body>
-    Forecast
-</body>
+{{define "cell" -}} {{if .Split}}
+<div class="cell split" {{if .Label}} aria-label="{{.Label}}" {{end}}>
+    <div class="band {{.AM.Class}}">
+        <small>AM</small><svg><use href="#{{.AM.Icon}}" /></svg>
+    </div>
+    <div class="band {{.PM.Class}}">
+        <small>PM</small><svg><use href="#{{.PM.Icon}}" /></svg>
+    </div>
+</div>
+{{else}}
+<div class="cell {{.Class}}">
+    <svg><use href="#{{.Icon}}" /></svg><span class="temp">{{.Temp}}</span
+    ><span class="sr-only">{{.Label}}</span>
+</div>
+{{end}} {{- end -}}
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>CragCast — climbing conditions</title>
+        <style>
+            :root {
+                --page: #ffffff;
+                --text: #14161a;
+                --muted: #62686f;
+                --hair: rgba(20, 22, 26, 0.1);
+                --chip-bd: rgba(20, 22, 26, 0.16);
+                --go-bg: #d7ecc9;
+                --go-fg: #2c6b2e;
+                --warn-bg: #f6e4bf;
+                --warn-fg: #8a5a10;
+                --wet-bg: #f3d2d2;
+                --wet-fg: #9c2b2b;
+                --cell-r: 9px;
+            }
+            @media (prefers-color-scheme: dark) {
+                :root {
+                    --page: #0e1014;
+                    --text: #e7e9ec;
+                    --muted: #969ca4;
+                    --hair: rgba(255, 255, 255, 0.1);
+                    --chip-bd: rgba(255, 255, 255, 0.18);
+                    --go-bg: #1d3325;
+                    --go-fg: #93d79c;
+                    --warn-bg: #382c18;
+                    --warn-fg: #e0b06f;
+                    --wet-bg: #3a2121;
+                    --wet-fg: #e79898;
+                }
+            }
+
+            * {
+                box-sizing: border-box;
+            }
+            html {
+                -webkit-text-size-adjust: 100%;
+            }
+            body {
+                margin: 0;
+                background: var(--page);
+                color: var(--text);
+                font:
+                    15px/1.5 system-ui,
+                    -apple-system,
+                    "Segoe UI",
+                    Roboto,
+                    sans-serif;
+                -webkit-font-smoothing: antialiased;
+            }
+            .app {
+                max-width: 520px;
+                margin: 0 auto;
+                padding: 22px 16px 40px;
+            }
+
+            /* ---- header ---- */
+            header {
+                margin-bottom: 18px;
+            }
+            .wordmark {
+                font-size: 21px;
+                font-weight: 650;
+                letter-spacing: -0.02em;
+            }
+            .wordmark span {
+                color: var(--go-fg);
+            }
+            .tagline {
+                color: var(--muted);
+                font-size: 13px;
+                margin-top: 2px;
+            }
+            .updated {
+                color: var(--muted);
+                font-size: 12px;
+                margin-top: 8px;
+                display: flex;
+                align-items: center;
+                gap: 5px;
+            }
+            .updated .dot {
+                width: 6px;
+                height: 6px;
+                border-radius: 50%;
+                background: var(--go-fg);
+            }
+
+            /* ---- filters ---- */
+            .filters {
+                display: flex;
+                gap: 8px;
+                margin: 16px 0 4px;
+                overflow-x: auto;
+                scrollbar-width: none;
+            }
+            .filters::-webkit-scrollbar {
+                display: none;
+            }
+            .chip {
+                flex: none;
+                font: inherit;
+                font-size: 13px;
+                padding: 6px 14px;
+                border: 1px solid var(--chip-bd);
+                border-radius: 999px;
+                background: transparent;
+                color: var(--muted);
+                cursor: pointer;
+            }
+            .chip[aria-pressed="true"] {
+                background: var(--text);
+                color: var(--page);
+                border-color: var(--text);
+            }
+
+            /* ---- sticky day header ---- */
+            .days {
+                position: sticky;
+                top: 0;
+                z-index: 2;
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 6px;
+                background: var(--page);
+                padding: 12px 0 8px;
+                margin-top: 10px;
+                border-bottom: 1px solid var(--hair);
+            }
+            .day {
+                text-align: center;
+            }
+            .day b {
+                display: block;
+                font-size: 12px;
+                font-weight: 600;
+            }
+            .day small {
+                color: var(--muted);
+                font-size: 10px;
+            }
+
+            /* ---- area + crag ---- */
+            .area {
+                padding-top: 10px;
+            }
+            .area h2 {
+                font-size: 13px;
+                font-weight: 600;
+                margin: 14px 2px 2px;
+                display: flex;
+                align-items: baseline;
+                gap: 7px;
+            }
+            .area h2 .drive {
+                color: var(--muted);
+                font-weight: 400;
+            }
+            .crag-head {
+                display: flex;
+                align-items: baseline;
+                gap: 7px;
+                margin: 12px 2px 6px;
+            }
+            .crag-name {
+                font-size: 14px;
+                font-weight: 550;
+            }
+            .aspect {
+                font-size: 11px;
+                color: var(--muted);
+                display: inline-flex;
+                align-items: center;
+                gap: 4px;
+            }
+            .aspect svg {
+                width: 12px;
+                height: 12px;
+            }
+
+            /* ---- forecast cells ---- */
+            .forecast {
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 6px;
+            }
+
+            /* mobile shows 5 days; days 6–7 are in the HTML but hidden */
+            .days > :nth-child(n + 6),
+            .forecast > :nth-child(n + 6) {
+                display: none;
+            }
+            .cell {
+                min-height: 58px;
+                border-radius: var(--cell-r);
+                overflow: hidden;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                gap: 3px;
+                cursor: pointer;
+            }
+            .cell svg {
+                width: 17px;
+                height: 17px;
+            }
+            .cell .temp {
+                font-size: 14px;
+                font-weight: 600;
+                font-variant-numeric: tabular-nums;
+            }
+            .cell.go {
+                background: var(--go-bg);
+                color: var(--go-fg);
+            }
+            .cell.warn {
+                background: var(--warn-bg);
+                color: var(--warn-fg);
+            }
+            .cell.wet {
+                background: var(--wet-bg);
+                color: var(--wet-fg);
+            }
+
+            /* split AM/PM cell */
+            .cell.split {
+                padding: 0;
+            }
+            .band {
+                flex: 1;
+                width: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                gap: 5px;
+            }
+            .band svg {
+                width: 13px;
+                height: 13px;
+            }
+            .band small {
+                font-size: 10px;
+                font-weight: 600;
+            }
+            .band.go {
+                background: var(--go-bg);
+                color: var(--go-fg);
+            }
+            .band.warn {
+                background: var(--warn-bg);
+                color: var(--warn-fg);
+            }
+            .band.wet {
+                background: var(--wet-bg);
+                color: var(--wet-fg);
+            }
+
+            /* ---- footer ---- */
+            footer {
+                margin-top: 22px;
+                padding-top: 14px;
+                border-top: 1px solid var(--hair);
+                font-size: 12px;
+                color: var(--muted);
+            }
+            footer a {
+                color: inherit;
+            }
+
+            /* desktop shows all 7 days */
+            @media (min-width: 640px) {
+                .app {
+                    max-width: 660px;
+                }
+                .days,
+                .forecast {
+                    grid-template-columns: repeat(7, 1fr);
+                }
+                .days > :nth-child(n + 6) {
+                    display: block;
+                }
+                .forecast > :nth-child(n + 6) {
+                    display: flex;
+                }
+            }
+
+            :focus-visible {
+                outline: 2px solid var(--text);
+                outline-offset: 2px;
+                border-radius: 4px;
+            }
+            .sr-only {
+                position: absolute;
+                width: 1px;
+                height: 1px;
+                padding: 0;
+                margin: -1px;
+                overflow: hidden;
+                clip: rect(0, 0, 0, 0);
+                border: 0;
+            }
+
+            @media (prefers-reduced-motion: no-preference) {
+                .chip,
+                .cell {
+                    transition: filter 0.12s ease;
+                }
+                .cell:hover {
+                    filter: brightness(0.97);
+                }
+                @media (prefers-color-scheme: dark) {
+                    .cell:hover {
+                        filter: brightness(1.12);
+                    }
+                }
+            }
+        </style>
+    </head>
+    <body>
+        <!-- icon definitions -->
+        <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+            <symbol
+                id="i-check"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2.2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path d="M5 13l4 4L19 7" />
+            </symbol>
+            <symbol
+                id="i-sun"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <circle cx="12" cy="12" r="4" />
+                <path
+                    d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6"
+                />
+            </symbol>
+            <symbol
+                id="i-drop"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path
+                    d="M12 3.2s6 5.8 6 9.6a6 6 0 1 1-12 0c0-3.8 6-9.6 6-9.6z"
+                />
+            </symbol>
+            <symbol
+                id="i-rain"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path
+                    d="M7 15.5a4 4 0 1 1 .6-7.96A5 5 0 0 1 17.5 9a3.3 3.3 0 0 1 .2 6.5"
+                />
+                <path d="M8.5 18l-1 2.2M12 18l-1 2.2M15.5 18l-1 2.2" />
+            </symbol>
+            <symbol
+                id="i-cloud"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                stroke-width="2"
+                stroke-linecap="round"
+                stroke-linejoin="round"
+            >
+                <path
+                    d="M7 18a4 4 0 1 1 .6-7.96A5 5 0 0 1 17.5 11.5 3.3 3.3 0 0 1 17 18H7z"
+                />
+            </symbol>
+        </svg>
+
+        <div class="app">
+            <header>
+                <div class="wordmark">Crag<span>Cast</span></div>
+                <div class="tagline">
+                    Climbing conditions within driving distance of Seattle
+                </div>
+                <div class="updated">
+                    <span class="dot"></span>Updated {{.Updated}}
+                </div>
+            </header>
+
+            <div
+                class="filters"
+                role="group"
+                aria-label="Filter by climbing type and distance"
+            >
+                <button class="chip" aria-pressed="false">Sport</button>
+                <button class="chip" aria-pressed="false">Boulder</button>
+                <button class="chip" aria-pressed="false">Trad</button>
+                <button class="chip" aria-pressed="false">&lt; 2 hr</button>
+            </div>
+
+            <div class="days" aria-hidden="true">
+                {{- range .Days}}
+                <div class="day"><b>{{.Label}}</b><small>{{.Date}}</small></div>
+                {{- end}}
+            </div>
+
+            {{range .Areas}}
+            <section class="area">
+                <h2>{{.Name}} <span class="drive">· {{.Drive}}</span></h2>
+                {{range .Crags}}
+                <div class="crag">
+                    <div class="crag-head">
+                        <span class="crag-name">{{.Name}}</span>
+                        <span class="aspect"
+                            ><svg><use href="#{{.AspectIcon}}" /></svg>
+                            {{.Aspect}}</span
+                        >
+                    </div>
+                    <div class="forecast">
+                        {{- range .Cells}} {{template "cell" .}} {{- end}}
+                    </div>
+                </div>
+                {{- end}}
+            </section>
+            {{end}}
+
+            <footer>
+                Forecast data by
+                <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0).
+                <a href="/about">About CragCast</a>
+            </footer>
+        </div>
+    </body>
+</html>

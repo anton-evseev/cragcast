@@ -9,72 +9,72 @@ import (
 
 	"github.com/anton-evseev/cragcast/config"
 	"github.com/anton-evseev/cragcast/gen"
+	"github.com/anton-evseev/cragcast/scrape"
 	"github.com/anton-evseev/cragcast/serve"
 )
 
 func main() {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, "cragcast:", err)
+		os.Exit(1)
+	}
+}
+
+func run(args []string) error {
 	cmds := []string{"gen-cron", "gen-systemd", "scrape", "serve"}
-
-	if len(os.Args) < 2 || !slices.Contains(cmds, os.Args[1]) {
-		fmt.Fprintln(os.Stderr, "usage: cragcast <%s> [flags]", strings.Join(cmds, "|"))
-		os.Exit(2)
+	if len(args) == 0 || !slices.Contains(cmds, args[0]) {
+		return fmt.Errorf("usage: cragcast <%s> [flags]", strings.Join(cmds, "|"))
 	}
+	cmd, rest := args[0], args[1:]
 
-	cmd := os.Args[1]
-	fs := flag.NewFlagSet(cmd, flag.ExitOnError)
-	configPath := fs.String("config", "", "TODO")
+	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
+	configPath := fs.String("config", "", "path to config.yml")
+	var region *string
 	if cmd == "scrape" {
-		// TODO: region param
+		region = fs.String("region", "", "limit to a single region id")
 	}
-	fs.Parse(os.Args[2:])
-
+	if err := fs.Parse(rest); err != nil {
+		return err
+	}
 	if *configPath == "" {
-		fmt.Fprintf(os.Stderr, "TODO")
-		os.Exit(2)
+		return fmt.Errorf("%s: --config is required", cmd)
 	}
 
 	cfg, err := config.LoadConfig(*configPath)
 	if err != nil {
-		// TODO
-		os.Exit(2)
+		return err
 	}
 
 	switch cmd {
 	case "gen-cron":
-		opts := gen.CronOptions{
-			ConfigPath: *configPath,
-			Regions:    cfg.Regions,
-		}
-		err := gen.RunCron(opts)
-		if err != nil {
-			// TODO
-			os.Exit(2)
-		}
+		return gen.RunCron(gen.CronOptions{ConfigPath: *configPath, Regions: cfg.Regions})
 	case "gen-systemd":
-		opts := gen.SystemdOptions{
-			ConfigPath: *configPath,
-		}
-		err := gen.RunSystemd(opts)
-		if err != nil {
-			// TODO
-			os.Exit(2)
-		}
+		return gen.RunSystemd(gen.SystemdOptions{ConfigPath: *configPath})
 	case "scrape":
-		break
+		regions := cfg.Regions
+		if *region != "" {
+			r, ok := findRegion(cfg.Regions, *region)
+			if !ok {
+				return fmt.Errorf("region not found: %s", *region)
+			}
+			regions = []config.Region{r}
+		}
+		return scrape.Run(scrape.ScrapeOptions{Regions: regions, DataDir: "./data"})
 	case "serve":
-		regions := make([]string, len(cfg.Regions))
+		ids := make([]string, len(cfg.Regions))
 		for i, r := range cfg.Regions {
-			regions[i] = r.Name
+			ids[i] = r.Id
 		}
-		opts := serve.ServeOptions{
-			Regions: regions,
-			DataDir: "/var/lib/cragcast",
-			Addr:    ":8090",
-		}
-		err := serve.Run(opts)
-		if err != nil {
-			// TODO:
-			os.Exit(2)
+		return serve.Run(serve.ServeOptions{Regions: ids, DataDir: "./data", Addr: ":8090"})
+	}
+	return nil
+}
+
+func findRegion(regions []config.Region, id string) (config.Region, bool) {
+	for _, r := range regions {
+		if r.Id == id {
+			return r, true
 		}
 	}
+	return config.Region{}, false
 }

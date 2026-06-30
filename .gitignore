@@ -34,3 +34,4 @@ go.work.sum
 # User-defined
 .DS_Store
 cragcast
+/data/**/*

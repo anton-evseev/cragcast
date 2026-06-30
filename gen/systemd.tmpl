@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=cragcast
-ExecStart=/bin/local/bin/cragcast serve --config {{.ConfigPath}}
+ExecStart=/usr/local/bin/cragcast serve --config {{.ConfigPath}}
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true
