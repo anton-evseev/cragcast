@@ -203,15 +203,14 @@ func classOf(v Verdict) string {
 }
 
 func iconOf(r Result) string {
-	switch r.Verdict {
-	case Green:
+	switch {
+	case r.Verdict == Green:
 		return "i-check"
-	case Red:
+	case r.Reason == "hot" || r.Reason == "too hot":
+		return "i-sun" // heat is the culprit, whether Yellow or Red
+	case r.Verdict == Red:
 		return "i-rain"
-	default: // Yellow — reason-bearing icon
-		if r.Reason == "hot" {
-			return "i-sun"
-		}
+	default: // Yellow, non-heat — reason-bearing drop
 		return "i-drop"
 	}
 }

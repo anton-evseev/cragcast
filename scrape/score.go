@@ -33,6 +33,7 @@ type Thresholds struct {
 	MaxSolarGain float64 // °F added to a fully-sunny, cloudless window
 	HotRed       float64 // effective temp at/above → Red
 	HotYellow    float64 // → Yellow
+	HotFloor     float64 // air temp (°F) below which a window never reads "hot"
 	ColdRed      float64 // at/below → Red
 	ColdYellow   float64 // → Yellow
 	DewYellow    float64 // dew point at/above → Yellow (greasy friction)
@@ -47,6 +48,7 @@ func DefaultThresholds() Thresholds {
 		MaxSolarGain: 14,
 		HotRed:       95,
 		HotYellow:    80,
+		HotFloor:     70,
 		ColdRed:      28,
 		ColdYellow:   36,
 		DewYellow:    60,
@@ -79,15 +81,21 @@ func Score(w Window, p Profile, win string, t Thresholds) Result {
 	// Sun and wind act through temperature; fold sun into an effective temp.
 	gain := sunFactor(p.Aspect, win) * t.MaxSolarGain * (1 - w.CloudMean/100)
 	eff := w.TmaxF + gain
+	// Solar gain can only make an already-warm day feel hot — a cool day in
+	// the sun never reads "hot". Below HotFloor the heat checks don't apply.
+	hot := w.TmaxF >= t.HotFloor
 
-	if eff >= t.HotRed || eff <= t.ColdRed {
-		return Result{Red, "out of range"}
+	switch {
+	case hot && eff >= t.HotRed:
+		return Result{Red, "too hot"}
+	case eff <= t.ColdRed:
+		return Result{Red, "too cold"}
 	}
 
 	switch {
 	case stillDrying:
 		return Result{Yellow, "drying"}
-	case eff >= t.HotYellow:
+	case hot && eff >= t.HotYellow:
 		return Result{Yellow, "hot"}
 	case eff <= t.ColdYellow:
 		return Result{Yellow, "cold"}
