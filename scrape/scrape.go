@@ -92,7 +92,7 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 
 	view := ForecastView{
 		Region:  r.Name,
-		Updated: now.Format("Mon, 3:04 PM"),
+		Updated: now.Format("Jun 2, 3:04 PM"),
 		Days:    dayHeaders(now, loc),
 	}
 
