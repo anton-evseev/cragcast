@@ -25,7 +25,6 @@
                 --text: #14161a;
                 --muted: #62686f;
                 --hair: rgba(20, 22, 26, 0.1);
-                --chip-bd: rgba(20, 22, 26, 0.16);
                 --go-bg: #d7ecc9;
                 --go-fg: #2c6b2e;
                 --warn-bg: #f6e4bf;
@@ -40,7 +39,6 @@
                     --text: #e7e9ec;
                     --muted: #969ca4;
                     --hair: rgba(255, 255, 255, 0.1);
-                    --chip-bd: rgba(255, 255, 255, 0.18);
                     --go-bg: #1d3325;
                     --go-fg: #93d79c;
                     --warn-bg: #382c18;
@@ -107,34 +105,6 @@
                 height: 6px;
                 border-radius: 50%;
                 background: var(--go-fg);
-            }
-
-            /* ---- filters ---- */
-            .filters {
-                display: flex;
-                gap: 8px;
-                margin: 16px 0 4px;
-                overflow-x: auto;
-                scrollbar-width: none;
-            }
-            .filters::-webkit-scrollbar {
-                display: none;
-            }
-            .chip {
-                flex: none;
-                font: inherit;
-                font-size: 13px;
-                padding: 6px 14px;
-                border: 1px solid var(--chip-bd);
-                border-radius: 999px;
-                background: transparent;
-                color: var(--muted);
-                cursor: pointer;
-            }
-            .chip[aria-pressed="true"] {
-                background: var(--text);
-                color: var(--page);
-                border-color: var(--text);
             }
 
             /* ---- sticky day header ---- */
@@ -403,7 +373,6 @@
             }
 
             @media (prefers-reduced-motion: no-preference) {
-                .chip,
                 .cell {
                     transition: filter 0.12s ease;
                 }
@@ -512,17 +481,6 @@
                     <span class="dot"></span>Updated {{.Updated}}
                 </div>
             </header>
-
-            <div
-                class="filters"
-                role="group"
-                aria-label="Filter by climbing type and distance"
-            >
-                <button class="chip" aria-pressed="false">Sport</button>
-                <button class="chip" aria-pressed="false">Boulder</button>
-                <button class="chip" aria-pressed="false">Trad</button>
-                <button class="chip" aria-pressed="false">&lt; 2 hr</button>
-            </div>
 
             <div class="days" aria-hidden="true">
                 {{- range .Days}}
