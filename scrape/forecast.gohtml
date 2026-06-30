@@ -150,13 +150,6 @@
                 font-size: 12px;
                 color: var(--muted);
                 font-weight: 400;
-                display: inline-flex;
-                align-items: center;
-                gap: 4px;
-            }
-            .area h2 .drive svg {
-                width: 13px;
-                height: 13px;
             }
             .crag-head {
                 display: flex;
@@ -443,20 +436,6 @@
                 <path d="M8.5 18l-1 2.2M12 18l-1 2.2M15.5 18l-1 2.2" />
             </symbol>
             <symbol
-                id="i-car"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                stroke-width="2"
-                stroke-linecap="round"
-                stroke-linejoin="round"
-            >
-                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C1.4 11.3 1 12.1 1 13v3c0 .6.4 1 1 1h2" />
-                <circle cx="7" cy="17" r="2" />
-                <path d="M9 17h6" />
-                <circle cx="17" cy="17" r="2" />
-            </symbol>
-            <symbol
                 id="i-cloud"
                 viewBox="0 0 24 24"
                 fill="none"
@@ -490,7 +469,7 @@
 
             {{range .Areas}}
             <section class="area">
-                <h2>{{.Name}} <span class="drive"><svg aria-hidden="true"><use href="#i-car" /></svg>{{.Drive}}</span></h2>
+                <h2>{{.Name}} <span class="drive">{{.Drive}} drive</span></h2>
                 {{range .Crags}}
                 <div class="crag">
                     <div class="crag-head">
