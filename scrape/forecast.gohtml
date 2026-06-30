@@ -1,17 +1,17 @@
 {{define "cell" -}} {{if .Split}}
-<div class="cell split" {{if .Label}} aria-label="{{.Label}}" {{end}}>
+<button type="button" class="cell split" data-day="{{.Day}}" data-am="{{.AMData}}" data-pm="{{.PMData}}" {{if .Label}} aria-label="{{.Label}}" {{end}}>
     <div class="band {{.AM.Class}}">
         <small>AM</small><svg><use href="#{{.AM.Icon}}" /></svg>
     </div>
     <div class="band {{.PM.Class}}">
         <small>PM</small><svg><use href="#{{.PM.Icon}}" /></svg>
     </div>
-</div>
+</button>
 {{else}}
-<div class="cell {{.Class}}">
+<button type="button" class="cell {{.Class}}" data-day="{{.Day}}" data-am="{{.AMData}}" data-pm="{{.PMData}}">
     <svg><use href="#{{.Icon}}" /></svg><span class="temp">{{.Temp}}</span
     ><span class="sr-only">{{.Label}}</span>
-</div>
+</button>
 {{end}} {{- end -}}
 <!DOCTYPE html>
 <html lang="en">
@@ -220,6 +220,15 @@
                 justify-content: center;
                 gap: 3px;
                 cursor: pointer;
+                /* button resets */
+                width: 100%;
+                padding: 0;
+                border: 0;
+                background: none; /* clear UA ButtonFace (showed in the split gap) */
+                font: inherit;
+                color: inherit;
+                appearance: none;
+                -webkit-appearance: none;
             }
             .cell svg {
                 width: 17px;
@@ -274,6 +283,65 @@
             .band.wet {
                 background: var(--wet-bg);
                 color: var(--wet-fg);
+            }
+
+            /* ---- tap-to-expand detail panel (toggled by JS via [hidden]) ---- */
+            .detail {
+                position: relative;
+                margin: 6px 0 2px;
+                padding: 10px 30px 10px 12px;
+                border: 1px solid var(--hair);
+                border-radius: var(--cell-r);
+                font-size: 13px;
+            }
+            .detail-close {
+                position: absolute;
+                top: 4px;
+                right: 8px;
+                padding: 0 4px;
+                border: 0;
+                background: none;
+                cursor: pointer;
+                color: var(--muted);
+                font: inherit;
+                font-size: 20px;
+                line-height: 1;
+            }
+            .detail-day {
+                font-weight: 600;
+                margin-bottom: 6px;
+            }
+            .dw {
+                display: flex;
+                flex-wrap: wrap;
+                align-items: baseline;
+                gap: 4px 8px;
+                margin-top: 4px;
+            }
+            .dw-when {
+                font-size: 11px;
+                font-weight: 600;
+                padding: 1px 8px;
+                border-radius: 999px;
+            }
+            .dw-when.go {
+                background: var(--go-bg);
+                color: var(--go-fg);
+            }
+            .dw-when.warn {
+                background: var(--warn-bg);
+                color: var(--warn-fg);
+            }
+            .dw-when.wet {
+                background: var(--wet-bg);
+                color: var(--wet-fg);
+            }
+            .dw-reason {
+                font-weight: 600;
+            }
+            .dw-stats {
+                color: var(--muted);
+                font-variant-numeric: tabular-nums;
             }
 
             /* ---- footer ---- */
@@ -450,6 +518,7 @@
                     <div class="forecast">
                         {{- range .Cells}} {{template "cell" .}} {{- end}}
                     </div>
+                    <div class="detail" hidden></div>
                 </div>
                 {{- end}}
             </section>
@@ -461,5 +530,64 @@
                 <a href="/about">About CragCast</a>
             </footer>
         </div>
+
+        <script>
+            // Tap a cell to expand its detail panel; data lives in the cell's
+            // data-* attributes (see windowData in scrape.go). One panel per
+            // crag, reused — only one is open at a time, page-wide.
+            (function () {
+                var app = document.querySelector(".app");
+                var active = null; // the currently expanded cell
+
+                app.querySelectorAll(".cell").forEach(function (c) {
+                    c.setAttribute("aria-expanded", "false");
+                });
+
+                // win = "class,reason,temp,precip,soak,dew,wind"
+                function row(label, win) {
+                    var p = win.split(",");
+                    var stats = p[2]
+                        ? '<span class="dw-stats">' +
+                          p[2] + "° · rain " + p[3] + "″ · 72h " + p[4] +
+                          "″ · dew " + p[5] + "° · wind " + p[6] + " mph</span>"
+                        : "";
+                    return (
+                        '<div class="dw"><span class="dw-when ' + p[0] + '">' +
+                        label + '</span><span class="dw-reason">' + p[1] +
+                        "</span>" + stats + "</div>"
+                    );
+                }
+
+                function close() {
+                    if (!active) return;
+                    active.setAttribute("aria-expanded", "false");
+                    active.closest(".crag").querySelector(".detail").hidden = true;
+                    active = null;
+                }
+
+                app.addEventListener("click", function (e) {
+                    if (e.target.closest(".detail-close")) {
+                        close();
+                        return;
+                    }
+                    var cell = e.target.closest(".cell");
+                    if (!cell) return;
+                    if (cell === active) {
+                        close();
+                        return;
+                    }
+                    close();
+                    var panel = cell.closest(".crag").querySelector(".detail");
+                    panel.innerHTML =
+                        '<button type="button" class="detail-close" aria-label="Close details">×</button>' +
+                        '<div class="detail-day">' + cell.dataset.day + "</div>" +
+                        row("AM", cell.dataset.am) +
+                        row("PM", cell.dataset.pm);
+                    panel.hidden = false;
+                    cell.setAttribute("aria-expanded", "true");
+                    active = cell;
+                });
+            })();
+        </script>
     </body>
 </html>

@@ -57,6 +57,13 @@ type Cell struct {
 	AM    Half
 	PM    Half
 	Label string // aria-label
+
+	// Tap-to-expand detail. Carried as compact data-* attributes and formatted
+	// client-side (see the script in forecast.gohtml). Each window string is
+	// "class,reason,temp,precip,soak,dew,wind"; stats are empty when no data.
+	Day    string // panel header, e.g. "Wed, Jun 18"
+	AMData string
+	PMData string
 }
 type Half struct {
 	Class string
@@ -125,26 +132,49 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 // cells scores both windows per day and collapses to solid or split.
 func cells(days []DayForecast, p Profile, th Thresholds) []Cell {
 	out := make([]Cell, 0, len(days))
-	for _, d := range days {
+	for i, d := range days {
 		am := Score(d.AM, p, "AM", th)
 		pm := Score(d.PM, p, "PM", th)
-		if am.Verdict == pm.Verdict {
-			out = append(out, Cell{
-				Class: classOf(am.Verdict),
-				Icon:  iconOf(am),
-				Temp:  fmt.Sprintf("%.0f°", max(d.AM.TmaxF, d.PM.TmaxF)),
-				Label: fmt.Sprintf("%s, %s", d.Date.Format("Mon"), am.Reason),
-			})
-		} else {
-			out = append(out, Cell{
-				Split: true,
-				AM:    Half{Class: classOf(am.Verdict), Icon: iconOf(am)},
-				PM:    Half{Class: classOf(pm.Verdict), Icon: iconOf(pm)},
-				Label: fmt.Sprintf("%s, AM %s, PM %s", d.Date.Format("Mon"), am.Reason, pm.Reason),
-			})
+		cell := Cell{
+			Day:    dayLabel(d.Date, i),
+			AMData: windowData(d.AM, am),
+			PMData: windowData(d.PM, pm),
 		}
+		if am.Verdict == pm.Verdict {
+			cell.Class = classOf(am.Verdict)
+			cell.Icon = iconOf(am)
+			cell.Temp = fmt.Sprintf("%.0f°", max(d.AM.TmaxF, d.PM.TmaxF))
+			cell.Label = fmt.Sprintf("%s, %s", d.Date.Format("Mon"), am.Reason)
+		} else {
+			cell.Split = true
+			cell.AM = Half{Class: classOf(am.Verdict), Icon: iconOf(am)}
+			cell.PM = Half{Class: classOf(pm.Verdict), Icon: iconOf(pm)}
+			cell.Label = fmt.Sprintf("%s, AM %s, PM %s", d.Date.Format("Mon"), am.Reason, pm.Reason)
+		}
+		out = append(out, cell)
 	}
 	return out
+}
+
+// windowData packs one window into the compact attribute string the client
+// formats: "class,reason,temp,precip,soak,dew,wind". Numbers are pre-rounded
+// (the client only appends units); a no-data window carries empty stat fields.
+// Reasons never contain commas, so a plain comma join is unambiguous.
+func windowData(w Window, r Result) string {
+	cls := classOf(r.Verdict)
+	if !w.Valid {
+		return cls + "," + r.Reason + ",,,,,"
+	}
+	return fmt.Sprintf("%s,%s,%.0f,%.2f,%.2f,%.0f,%.0f",
+		cls, r.Reason, w.TmaxF, w.PrecipIn, w.Antecedent, w.DewMaxF, w.WindMaxMph)
+}
+
+// dayLabel is the detail-panel header, e.g. "Today, Jun 18" or "Wed, Jun 18".
+func dayLabel(date time.Time, i int) string {
+	if i == 0 {
+		return "Today, " + date.Format("Jan 2")
+	}
+	return date.Format("Mon, Jan 2")
 }
 
 func dayHeaders(now time.Time, loc *time.Location) []DayHeader {
