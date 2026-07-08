@@ -7,22 +7,33 @@ areas:
     name: The Exits
     drive: 45 min
     crags:
-      # I-90 conglomerate — sedimentary, slow to dry, and several walls seep.
-      - name: Deception Crags
-        lat: 47.4408
-        lon: -121.5860
+      - name: "Exit 32: Little Si"
+        lat: 47.49829
+        lon: -121.75561
+        rock: rhyolite
+        aspect: shade
+        seepage: false
+      - name: "Exit 34: Middle Fork"
+        lat: 47.53717
+        lon: -121.58422
+        rock: granite
+        aspect: mixed
+        seepage: false
+      - name: "Exit 38: Deception Crags"
+        lat: 47.43567
+        lon: -121.66045
         rock: conglomerate
         aspect: shade
         seepage: true
-      - name: Mt Washington
-        lat: 47.4280
-        lon: -121.5930
+      - name: "Exit 38: Mt. Washington"
+        lat: 47.44019
+        lon: -121.67703
         rock: conglomerate
         aspect: PM sun
         seepage: false
-      - name: Far Side
-        lat: 47.4395
-        lon: -121.5810
+      - name: "Exit 38: Far Side"
+        lat: 47.4313
+        lon: -121.63232
         rock: conglomerate
         aspect: shade
         seepage: false
@@ -31,83 +42,180 @@ areas:
     name: Index & Skykomish Valley
     drive: 1 hr
     crags:
-      # Granite on the south side of the valley — dries faster than the Exits,
-      # but the Lower Town Wall is a notorious seeper after wet spells.
+      - name: Gold Bar
+        lat: 47.84769
+        lon: -121.60991
+        rock: granite
+        aspect: mixed
+        seepage: false
       - name: Lower Town Wall
-        lat: 47.8206
-        lon: -121.5731
+        lat: 47.8185
+        lon: -121.57148
         rock: granite
         aspect: PM sun
         seepage: true
       - name: Upper Town Wall
-        lat: 47.8230
-        lon: -121.5720
+        lat: 47.824
+        lon: -121.5655
         rock: granite
         aspect: sun all day
         seepage: false
       - name: Inner Walls
-        lat: 47.8190
-        lon: -121.5745
+        lat: 47.81938
+        lon: -121.57581
+        rock: granite
+        aspect: shade
+        seepage: false
+      - name: Index Bouldering
+        lat: 47.8187
+        lon: -121.5706
+        rock: granite
+        aspect: shade
+        seepage: true
+      - name: Miller River
+        lat: 47.66734
+        lon: -121.38683
         rock: granite
         aspect: shade
         seepage: false
 
-  - id: mt-erie
+  - id: mount-erie
     name: Mount Erie
     drive: 1 hr 15
-    crags: []
+    crags:
+      - name: Mount Erie
+        lat: 48.45306
+        lon: -122.62666
+        rock: granite
+        aspect: sun all day
+        seepage: false
 
   - id: darrington
     name: Darrington
     drive: 1 hr 30
-    crags: []
+    crags:
+      - name: Three O'Clock Rock
+        lat: 48.15921
+        lon: -121.61707
+        rock: granite
+        aspect: PM sun
+        seepage: false
+      - name: Squire Creek Wall
+        lat: 48.20093
+        lon: -121.64885
+        rock: granite
+        aspect: shade
+        seepage: true
 
   - id: stevens-pass
     name: Stevens Pass
     drive: 1 hr 45
-    crags: []
+    crags:
+      - name: Smithbrook
+        lat: 47.79588
+        lon: -121.06316
+        rock: granite
+        aspect: mixed
+        seepage: false
+      - name: Treasury
+        lat: 47.76118
+        lon: -121.12925
+        rock: granite
+        aspect: mixed
+        seepage: false
 
   - id: leavenworth
     name: Leavenworth
     drive: 2 hr 15
-    crags: []
+    crags:
+      - name: Icicle Creek
+        lat: 47.5427
+        lon: -120.71059
+        rock: granite
+        aspect: mixed
+        seepage: false
+      - name: Tumwater Canyon
+        lat: 47.60098
+        lon: -120.71325
+        rock: granite
+        aspect: PM sun
+        seepage: false
 
   - id: vantage
     name: Vantage
     drive: 2 hr 30
-    crags: []
+    crags:
+      - name: Frenchman Coulee
+        lat: 47.025
+        lon: -119.96858
+        rock: basalt
+        aspect: sun all day
+        seepage: false
 
   - id: tieton
     name: Tieton River
     drive: 2 hr 45
     crags:
-      # East-side basalt columns — desert-dry and sunny, the escape when the
-      # west side is socked in. Can be too hot mid-summer afternoons.
       - name: Royal Columns
-        lat: 46.7016
-        lon: -120.9300
+        lat: 46.72509
+        lon: -120.80937
         rock: basalt
         aspect: sun all day
         seepage: false
       - name: The Bend
-        lat: 46.6950
-        lon: -120.9480
+        lat: 46.71777
+        lon: -120.82976
         rock: basalt
         aspect: mixed
         seepage: false
       - name: The Cave
-        lat: 46.6985
-        lon: -120.9400
+        lat: 46.68604
+        lon: -120.94167
         rock: basalt
         aspect: shade
         seepage: false
-
-  - id: banks-lake
-    name: Banks Lake
-    drive: 3 hr 15
-    crags: []
+      - name: Astral Wall
+        lat: 46.5925
+        lon: -121.2381
+        rock: basalt
+        aspect: mixed
+        seepage: false
 
   - id: mazama
     name: Mazama
     drive: 3 hr 30
-    crags: []
+    crags:
+      - name: Fun Rock
+        lat: 48.60536
+        lon: -120.43257
+        rock: gneiss
+        aspect: sun all day
+        seepage: false
+      - name: Goat Wall
+        lat: 48.62285
+        lon: -120.44865
+        rock: gneiss
+        aspect: sun all day
+        seepage: false
+
+  - id: squamish
+    name: Squamish
+    drive: 4 hr 30
+    crags:
+      - name: Squamish
+        lat: 49.67997
+        lon: -123.15393
+        rock: granite
+        aspect: mixed
+        seepage: true
+
+  - id: smith-rock
+    name: Smith Rock
+    drive: 5 hr 30
+    crags:
+      - name: Smith Rock
+        lat: 44.36779
+        lon: -121.13906
+        rock: welded tuff
+        aspect: sun all day
+        seepage: false
