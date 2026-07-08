@@ -1,0 +1,567 @@
+{{define "styles" -}}
+<style>
+    :root {
+        --page: #ffffff;
+        --text: #14161a;
+        --muted: #62686f;
+        --hair: rgba(20, 22, 26, 0.1);
+        --go-bg: #d7ecc9;
+        --go-fg: #2c6b2e;
+        --warn-bg: #f6e4bf;
+        --warn-fg: #8a5a10;
+        --wet-bg: #f3d2d2;
+        --wet-fg: #9c2b2b;
+        --cell-r: 9px;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root {
+            --page: #0e1014;
+            --text: #e7e9ec;
+            --muted: #969ca4;
+            --hair: rgba(255, 255, 255, 0.1);
+            --go-bg: #1d3325;
+            --go-fg: #93d79c;
+            --warn-bg: #382c18;
+            --warn-fg: #e0b06f;
+            --wet-bg: #3a2121;
+            --wet-fg: #e79898;
+        }
+    }
+
+    * {
+        box-sizing: border-box;
+    }
+    html {
+        -webkit-text-size-adjust: 100%;
+    }
+    body {
+        margin: 0;
+        background: var(--page);
+        color: var(--text);
+        font:
+            15px/1.5 system-ui,
+            -apple-system,
+            "Segoe UI",
+            Roboto,
+            sans-serif;
+        -webkit-font-smoothing: antialiased;
+    }
+    .app {
+        max-width: 520px;
+        margin: 0 auto;
+        padding: 22px 16px 40px;
+    }
+
+    /* ---- header ---- */
+    header {
+        position: relative;
+        margin-bottom: 18px;
+    }
+    .wordmark {
+        font-size: 21px;
+        font-weight: 650;
+        letter-spacing: -0.02em;
+    }
+    .wordmark span {
+        color: var(--go-fg);
+    }
+    .wordmark a {
+        color: inherit;
+        text-decoration: none;
+    }
+    .tagline {
+        color: var(--muted);
+        font-size: 13px;
+        margin-top: 2px;
+    }
+    .updated {
+        position: absolute;
+        top: 0;
+        right: 0;
+        color: var(--muted);
+        font-size: 12px;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .updated .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--go-fg);
+    }
+
+    /* ---- sticky day header ---- */
+    .days {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+        background: var(--page);
+        padding: 12px 0 8px;
+        margin-top: 10px;
+        border-bottom: 1px solid var(--hair);
+    }
+    .day {
+        text-align: center;
+    }
+    .day b {
+        display: block;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .day small {
+        color: var(--muted);
+        font-size: 10px;
+    }
+
+    /* ---- area + crag ---- */
+    .area {
+        padding-top: 10px;
+    }
+    .area h2 {
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: -0.015em;
+        margin: 26px 2px 6px;
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+    }
+    .area h2 .drive {
+        font-size: 12px;
+        color: var(--muted);
+        font-weight: 400;
+    }
+    .area h2 .more {
+        margin-left: auto;
+        font-size: 12px;
+        font-weight: 500;
+        color: var(--go-fg);
+        text-decoration: none;
+        white-space: nowrap;
+    }
+    .area h2 .more:hover {
+        text-decoration: underline;
+    }
+    .crag-head {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        margin: 12px 2px 6px;
+    }
+    .crag-name {
+        font-size: 14px;
+        font-weight: 550;
+    }
+    .aspect {
+        font-size: 11px;
+        color: var(--muted);
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .aspect svg {
+        width: 12px;
+        height: 12px;
+    }
+
+    /* ---- forecast cells ---- */
+    .forecast {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 6px;
+    }
+
+    /* mobile shows 5 days; days 6–7 are in the HTML but hidden */
+    .days > :nth-child(n + 6),
+    .forecast > :nth-child(n + 6) {
+        display: none;
+    }
+    .cell {
+        min-height: 58px;
+        border-radius: var(--cell-r);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 3px;
+        cursor: pointer;
+        /* button resets */
+        width: 100%;
+        padding: 0;
+        border: 0;
+        background: none; /* clear UA ButtonFace (showed in the split gap) */
+        font: inherit;
+        color: inherit;
+        appearance: none;
+        -webkit-appearance: none;
+    }
+    .cell svg {
+        width: 17px;
+        height: 17px;
+    }
+    .cell .icons {
+        display: inline-flex;
+        align-items: center;
+        gap: 3px;
+    }
+    .cell .sep {
+        font-size: 13px;
+        opacity: 0.6;
+    }
+    .cell .temp {
+        font-size: 14px;
+        font-weight: 600;
+        font-variant-numeric: tabular-nums;
+    }
+    .cell.go {
+        background: var(--go-bg);
+        color: var(--go-fg);
+    }
+    .cell.warn {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+    }
+    .cell.wet {
+        background: var(--wet-bg);
+        color: var(--wet-fg);
+    }
+
+    /* split AM/PM cell */
+    .cell.split {
+        padding: 0;
+    }
+    .band {
+        flex: 1;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 5px;
+    }
+    .band svg {
+        width: 13px;
+        height: 13px;
+    }
+    .band small {
+        font-size: 10px;
+        font-weight: 600;
+    }
+    .band.go {
+        background: var(--go-bg);
+        color: var(--go-fg);
+    }
+    .band.warn {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+    }
+    .band.wet {
+        background: var(--wet-bg);
+        color: var(--wet-fg);
+    }
+
+    /* ---- tap-to-expand detail panel (toggled by JS via [hidden]) ---- */
+    .detail {
+        position: relative;
+        margin: 6px 0 2px;
+        padding: 10px 30px 10px 12px;
+        border: 1px solid var(--hair);
+        border-radius: var(--cell-r);
+        font-size: 13px;
+    }
+    .detail-close {
+        position: absolute;
+        top: 4px;
+        right: 8px;
+        padding: 0 4px;
+        border: 0;
+        background: none;
+        cursor: pointer;
+        color: var(--muted);
+        font: inherit;
+        font-size: 20px;
+        line-height: 1;
+    }
+    .detail-day {
+        font-weight: 600;
+        margin-bottom: 6px;
+    }
+    .dw {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 8px;
+        margin-top: 4px;
+    }
+    .dw-when {
+        font-size: 11px;
+        font-weight: 600;
+        padding: 1px 8px;
+        border-radius: 999px;
+    }
+    .dw-when.go {
+        background: var(--go-bg);
+        color: var(--go-fg);
+    }
+    .dw-when.warn {
+        background: var(--warn-bg);
+        color: var(--warn-fg);
+    }
+    .dw-when.wet {
+        background: var(--wet-bg);
+        color: var(--wet-fg);
+    }
+    .dw-reason {
+        font-weight: 600;
+    }
+    .dw-stats {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* crag-by-crag grid inside an area's day panel (region page) */
+    .crag-grid {
+        display: grid;
+        grid-template-columns: auto 1fr auto auto auto;
+        align-items: baseline;
+        gap: 3px 10px;
+        margin-top: 4px;
+    }
+    .cg-head {
+        justify-self: end;
+        font-size: 10px;
+        color: var(--muted);
+    }
+    .cg-name {
+        font-weight: 550;
+    }
+    .cg-name.go {
+        color: var(--go-fg);
+    }
+    .cg-name.warn {
+        color: var(--warn-fg);
+    }
+    .cg-name.wet {
+        color: var(--wet-fg);
+    }
+    .cg-reason {
+        color: var(--muted);
+        font-size: 12px;
+    }
+    .cg-num {
+        justify-self: end;
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* ---- footer ---- */
+    footer {
+        margin-top: 22px;
+        padding-top: 14px;
+        border-top: 1px solid var(--hair);
+        font-size: 12px;
+        color: var(--muted);
+        text-align: center;
+    }
+    footer a {
+        color: inherit;
+    }
+
+    /* desktop shows all 7 days */
+    @media (min-width: 640px) {
+        .app {
+            max-width: 660px;
+        }
+        .days,
+        .forecast {
+            grid-template-columns: repeat(7, 1fr);
+        }
+        .days > :nth-child(n + 6) {
+            display: block;
+        }
+        .forecast > :nth-child(n + 6) {
+            display: flex;
+        }
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--text);
+        outline-offset: 2px;
+        border-radius: 4px;
+    }
+    .sr-only {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        border: 0;
+    }
+
+    @media (prefers-reduced-motion: no-preference) {
+        .cell {
+            transition: filter 0.12s ease;
+        }
+        .cell:hover {
+            filter: brightness(0.97);
+        }
+        @media (prefers-color-scheme: dark) {
+            .cell:hover {
+                filter: brightness(1.12);
+            }
+        }
+    }
+</style>
+{{- end}}
+
+{{define "icons" -}}
+<svg width="0" height="0" style="position: absolute" aria-hidden="true">
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M5 13l4 4L19 7" />
+    </symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="4" />
+        <path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.2 5.2l1.6 1.6M17.2 17.2l1.6 1.6M18.8 5.2l-1.6 1.6M6.8 17.2l-1.6 1.6" />
+    </symbol>
+    <symbol id="i-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 3.2s6 5.8 6 9.6a6 6 0 1 1-12 0c0-3.8 6-9.6 6-9.6z" />
+    </symbol>
+    <symbol id="i-rain" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 15.5a4 4 0 1 1 .6-7.96A5 5 0 0 1 17.5 9a3.3 3.3 0 0 1 .2 6.5" />
+        <path d="M8.5 18l-1 2.2M12 18l-1 2.2M15.5 18l-1 2.2" />
+    </symbol>
+    <symbol id="i-cloud" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M7 18a4 4 0 1 1 .6-7.96A5 5 0 0 1 17.5 11.5 3.3 3.3 0 0 1 17 18H7z" />
+    </symbol>
+</svg>
+{{- end}}
+
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <title>CragCast — climbing conditions</title>
+        {{template "styles"}}
+    </head>
+    <body>
+        {{template "icons"}}
+
+        <div class="app">
+            <header>
+                <div class="wordmark">Crag<span>Cast</span></div>
+                <div class="tagline">
+                    Climbing conditions within driving distance of {{.Region}}
+                </div>
+                <div class="updated">
+                    <span class="dot"></span>Updated {{.Updated}}
+                </div>
+            </header>
+
+            <div class="days" aria-hidden="true">
+                {{- range .Days}}
+                <div class="day"><b>{{.Label}}</b><small>{{.Date}}</small></div>
+                {{- end}}
+            </div>
+
+            {{range .Areas}}
+            <section class="area">
+                <h2>
+                    {{.Name}} <span class="drive">{{.Drive}} drive</span>
+                    <a class="more" href="/{{$.RegionId}}/{{.Id}}">crags →</a>
+                </h2>
+                <div class="forecast" data-area="{{.Id}}">
+                    {{- range .Cells}}
+                    <button type="button" class="cell {{.Class}}" data-day="{{.Day}}">
+                        <span class="icons"
+                            >{{range $i, $ic := .Icons}}{{if $i}}<span class="sep">/</span>{{end}}<svg><use href="#{{$ic}}" /></svg>{{end}}</span
+                        ><span class="sr-only">{{.Label}}</span>
+                    </button>
+                    {{- end}}
+                </div>
+                <div class="detail" hidden></div>
+            </section>
+            {{end}}
+
+            <footer>
+                Forecast data by
+                <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0).
+                <a href="/about">About CragCast</a>
+            </footer>
+        </div>
+
+        <script>
+            // Tap an area's day cell to reveal that day's crag-by-crag list.
+            // CRAGS[areaId][dayIndex] = [dayLabel, [[name, class, reason, temp, rain, soak], ...]]
+            // (positional to keep the page small — see cragsData in scrape.go).
+            var CRAGS = {{.CragsJSON}};
+            (function () {
+                var app = document.querySelector(".app");
+                var active = null; // the currently expanded cell
+
+                app.querySelectorAll(".cell").forEach(function (c) {
+                    c.setAttribute("aria-expanded", "false");
+                });
+
+                // Lay the crags out as a grid so name/temp/rain/soak line up in
+                // columns down the card. c = [name, class, reason, temp, rain, soak].
+                function crags(day) {
+                    var rows = day[1]
+                        .map(function (c) {
+                            return (
+                                '<span class="cg-name ' + c[1] + '">' + c[0] +
+                                '</span><span class="cg-reason">' + c[2] +
+                                '</span><span class="cg-num">' + c[3] +
+                                '</span><span class="cg-num">' + c[4] +
+                                '</span><span class="cg-num">' + c[5] + "</span>"
+                            );
+                        })
+                        .join("");
+                    return (
+                        '<div class="crag-grid"><span></span><span></span>' +
+                        '<span class="cg-head">high</span>' +
+                        '<span class="cg-head">rain</span>' +
+                        '<span class="cg-head">72h</span>' + rows + "</div>"
+                    );
+                }
+
+                function close() {
+                    if (!active) return;
+                    active.setAttribute("aria-expanded", "false");
+                    active.closest(".area").querySelector(".detail").hidden = true;
+                    active = null;
+                }
+
+                app.addEventListener("click", function (e) {
+                    if (e.target.closest(".detail-close")) {
+                        close();
+                        return;
+                    }
+                    var cell = e.target.closest(".cell");
+                    if (!cell) return;
+                    if (cell === active) {
+                        close();
+                        return;
+                    }
+                    close();
+                    var area = cell.closest(".forecast").dataset.area;
+                    var day = CRAGS[area][+cell.dataset.day];
+                    var panel = cell.closest(".area").querySelector(".detail");
+                    panel.innerHTML =
+                        '<button type="button" class="detail-close" aria-label="Close details">×</button>' +
+                        '<div class="detail-day">' + day[0] + "</div>" +
+                        crags(day);
+                    panel.hidden = false;
+                    cell.setAttribute("aria-expanded", "true");
+                    active = cell;
+                });
+            })();
+        </script>
+    </body>
+</html>

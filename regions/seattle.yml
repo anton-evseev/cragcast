@@ -3,7 +3,8 @@ name: Seattle
 timezone: America/Los_Angeles
 update_schedule: 0 4/8 * * *
 areas:
-  - name: The Exits
+  - id: exits
+    name: The Exits
     drive: 45 min
     crags:
       # I-90 conglomerate — sedimentary, slow to dry, and several walls seep.
@@ -26,7 +27,8 @@ areas:
         aspect: shade
         seepage: false
 
-  - name: Index
+  - id: skykomish
+    name: Index & Skykomish Valley
     drive: 1 hr
     crags:
       # Granite on the south side of the valley — dries faster than the Exits,
@@ -50,7 +52,33 @@ areas:
         aspect: shade
         seepage: false
 
-  - name: Tieton River
+  - id: mt-erie
+    name: Mount Erie
+    drive: 1 hr 15
+    crags: []
+
+  - id: darrington
+    name: Darrington
+    drive: 1 hr 30
+    crags: []
+
+  - id: stevens-pass
+    name: Stevens Pass
+    drive: 1 hr 45
+    crags: []
+
+  - id: leavenworth
+    name: Leavenworth
+    drive: 2 hr 15
+    crags: []
+
+  - id: vantage
+    name: Vantage
+    drive: 2 hr 30
+    crags: []
+
+  - id: tieton
+    name: Tieton River
     drive: 2 hr 45
     crags:
       # East-side basalt columns — desert-dry and sunny, the escape when the
@@ -73,3 +101,13 @@ areas:
         rock: basalt
         aspect: shade
         seepage: false
+
+  - id: banks-lake
+    name: Banks Lake
+    drive: 3 hr 15
+    crags: []
+
+  - id: mazama
+    name: Mazama
+    drive: 3 hr 30
+    crags: []

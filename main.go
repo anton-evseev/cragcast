@@ -77,7 +77,11 @@ func run(args []string) error {
 		}
 		return scrape.Run(scrape.ScrapeOptions{Regions: regions, DataDir: dataDir})
 	case "serve":
-		return serve.Run(serve.ServeOptions{Regions: cfg.Regions, DataDir: dataDir, Addr: cfg.Addr})
+		regions, err := loadRegions(configDir, cfg.Regions)
+		if err != nil {
+			return err
+		}
+		return serve.Run(serve.ServeOptions{Regions: regions, DataDir: dataDir, Addr: cfg.Addr})
 	}
 	return nil
 }

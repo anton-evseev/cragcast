@@ -12,19 +12,22 @@ import (
 	"path/filepath"
 	"slices"
 	"time"
+
+	"github.com/anton-evseev/cragcast/config"
 )
 
 //go:embed about.html error.gohtml
 var embedded embed.FS
 
 type ServeOptions struct {
-	Regions []string
+	Regions []config.Region
 	DataDir string
 	Addr    string
 }
 
 type server struct {
-	regions   []string
+	regions   []string            // region ids, in config order
+	areas     map[string][]string // region id -> area ids (non-empty areas only)
 	dataDir   string
 	addr      string
 	aboutPage []byte
@@ -65,8 +68,21 @@ func newServer(opts ServeOptions) (*server, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse error.gohtml: %w", err)
 	}
+	regionIds := make([]string, len(opts.Regions))
+	areas := make(map[string][]string, len(opts.Regions))
+	for i, r := range opts.Regions {
+		regionIds[i] = r.Id
+		var ids []string
+		for _, a := range r.Areas {
+			if len(a.Crags) > 0 { // empty areas have no subpage — no route
+				ids = append(ids, a.Id)
+			}
+		}
+		areas[r.Id] = ids
+	}
 	return &server{
-		regions:   opts.Regions,
+		regions:   regionIds,
+		areas:     areas,
 		dataDir:   opts.DataDir,
 		aboutPage: about,
 		errorTmpl: errTmpl,
@@ -98,6 +114,11 @@ func (s *server) routes() http.Handler {
 		mux.HandleFunc("GET /"+region, func(w http.ResponseWriter, r *http.Request) {
 			s.handleRegion(w, r, region)
 		})
+		for _, area := range s.areas[region] {
+			mux.HandleFunc("GET /"+region+"/"+area, func(w http.ResponseWriter, r *http.Request) {
+				s.handleArea(w, r, region, area)
+			})
+		}
 	}
 	mux.HandleFunc("GET /", s.handleNotFound)
 	return mux
@@ -161,4 +182,27 @@ func (s *server) handleRegion(w http.ResponseWriter, r *http.Request, region str
 		MaxAge: 60 * 60 * 24 * 365, HttpOnly: true, SameSite: http.SameSiteLaxMode,
 	})
 	s.serveForecast(w, r, region)
+}
+
+// handleArea serves a single area's subpage. The region and area come from
+// statically registered routes (built from the validated config), never from
+// request input, so the join below can't be steered outside the data dir.
+func (s *server) handleArea(w http.ResponseWriter, r *http.Request, region, area string) {
+	f, err := os.Open(filepath.Join(s.dataDir, region, area+".html"))
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			s.serveError(w, r, errNoForecast) // route exists; data not scraped yet
+			return
+		}
+		s.serveError(w, r, errInternal)
+		return
+	}
+	defer f.Close()
+	info, err := f.Stat()
+	if err != nil {
+		s.serveError(w, r, errInternal)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	http.ServeContent(w, r, area+".html", info.ModTime(), f)
 }

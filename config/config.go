@@ -28,6 +28,7 @@ type Region struct {
 }
 
 type Area struct {
+	Id    string `yaml:"id"`
 	Name  string `yaml:"name"`
 	Drive string `yaml:"drive"`
 	Crags []Crag `yaml:"crags"`
@@ -128,15 +129,27 @@ func (r Region) Validate() error {
 	if len(r.Areas) == 0 {
 		return fmt.Errorf("region %q: at least one area is required", r.Id)
 	}
+	// Area ids become filenames (data/<region>/<id>.html) and route segments, so
+	// they must be present, unique within the region, and free of path/route
+	// separators. Areas may have no crags — those are skipped when scraping and
+	// serving, not treated as an error.
+	seenIds := make(map[string]bool, len(r.Areas))
 	for _, a := range r.Areas {
 		if strings.TrimSpace(a.Name) == "" {
 			return fmt.Errorf("region %q: area name is required", r.Id)
 		}
+		if a.Id == "" {
+			return fmt.Errorf("region %q: area %q: id is required", r.Id, a.Name)
+		}
+		if strings.ContainsAny(a.Id, "/\\ \t") {
+			return fmt.Errorf("region %q: area id %q must not contain spaces or slashes", r.Id, a.Id)
+		}
+		if seenIds[a.Id] {
+			return fmt.Errorf("region %q: duplicate area id %q", r.Id, a.Id)
+		}
+		seenIds[a.Id] = true
 		if strings.TrimSpace(a.Drive) == "" {
 			return fmt.Errorf("region %q: area %q: drive is required", r.Id, a.Name)
-		}
-		if len(a.Crags) == 0 {
-			return fmt.Errorf("region %q: area %q: at least one crag is required", r.Id, a.Name)
 		}
 		for _, cr := range a.Crags {
 			if strings.TrimSpace(cr.Name) == "" {

@@ -107,6 +107,33 @@ func Score(w Window, p Profile, win string, t Thresholds) Result {
 	return Result{Green, "good"}
 }
 
+// AreaVerdict rolls the per-crag day verdicts of an area into one summary
+// verdict by majority: Green only when more than half the crags are green; a
+// single green crag is enough to keep an otherwise-poor day at Yellow; Red only
+// when a majority are red and none are green. An empty area reads Yellow.
+func AreaVerdict(vs []Verdict) Verdict {
+	var green, red int
+	for _, v := range vs {
+		switch v {
+		case Green:
+			green++
+		case Red:
+			red++
+		}
+	}
+	n := len(vs)
+	switch {
+	case green*2 > n:
+		return Green
+	case green > 0:
+		return Yellow
+	case red*2 > n:
+		return Red
+	default:
+		return Yellow
+	}
+}
+
 // sunFactor is how much direct sun this aspect gets in the given window (0–1).
 // It's what makes sun an asset on cold days and a liability on hot ones, since
 // it only ever shifts the effective temperature.
