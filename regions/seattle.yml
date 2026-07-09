@@ -1,7 +1,7 @@
 id: seattle
 name: Seattle
 timezone: America/Los_Angeles
-update_schedule: 0 4/8 * * *
+update_schedule: 0 */4 * * *
 areas:
   - id: exits
     name: The Exits
