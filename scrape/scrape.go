@@ -21,8 +21,9 @@ var tmpl = template.Must(template.New("cragcast").ParseFS(tmplFS, "region.gohtml
 const forecastDays = 7
 
 type ScrapeOptions struct {
-	Regions []config.Region
-	DataDir string
+	Regions   []config.Region
+	DataDir   string
+	UserAgent string
 }
 
 // ----- view models -----
@@ -112,7 +113,7 @@ type cragDay struct {
 // Run scrapes each region (or one, if region != "") and writes the region
 // summary page plus a subpage per area under data/<region>/.
 func Run(o ScrapeOptions) error {
-	f := NewOpenMeteo()
+	f := NewOpenMeteo(o.UserAgent)
 	th := DefaultThresholds()
 
 	for _, r := range o.Regions {

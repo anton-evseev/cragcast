@@ -28,14 +28,16 @@ type Forecaster interface {
 
 // OpenMeteo is the real Forecaster, hitting api.open-meteo.com.
 type OpenMeteo struct {
-	Client  *http.Client
-	BaseURL string // defaults to the public endpoint
+	Client    *http.Client
+	BaseURL   string // defaults to the public endpoint
+	UserAgent string // identifies this deployment to Open-Meteo (required by config)
 }
 
-func NewOpenMeteo() *OpenMeteo {
+func NewOpenMeteo(userAgent string) *OpenMeteo {
 	return &OpenMeteo{
-		Client:  &http.Client{Timeout: 20 * time.Second},
-		BaseURL: "https://api.open-meteo.com/v1/forecast",
+		Client:    &http.Client{Timeout: 20 * time.Second},
+		BaseURL:   "https://api.open-meteo.com/v1/forecast",
+		UserAgent: userAgent,
 	}
 }
 
@@ -71,7 +73,7 @@ func (o *OpenMeteo) Fetch(ctx context.Context, lat, lon float64, loc *time.Locat
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("User-Agent", "cragcast (https://github.com/you/cragcast)")
+	req.Header.Set("User-Agent", o.UserAgent)
 
 	resp, err := o.Client.Do(req)
 	if err != nil {

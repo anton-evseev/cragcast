@@ -12,11 +12,12 @@ import (
 )
 
 type Config struct {
-	Bin     string   `yaml:"bin"`
-	Addr    string   `yaml:"addr"`
-	Data    string   `yaml:"data"`
-	User    string   `yaml:"user"`
-	Regions []string `yaml:"regions"`
+	Bin       string   `yaml:"bin"`
+	Addr      string   `yaml:"addr"`
+	Data      string   `yaml:"data"`
+	User      string   `yaml:"user"`
+	UserAgent string   `yaml:"user_agent"` // sent to Open-Meteo when scraping
+	Regions   []string `yaml:"regions"`
 }
 
 type Region struct {
@@ -82,8 +83,8 @@ func LoadRegionConfig(path string) (Region, error) {
 
 // Validate checks the deployment config for missing fields. All fields are
 // required: bin/user feed the generated cron and systemd units, addr/data feed
-// serve and scrape, so a config that omits any of them is incomplete for at
-// least one command.
+// serve and scrape, and user_agent identifies the deployment to Open-Meteo, so
+// a config that omits any of them is incomplete for at least one command.
 func (c Config) Validate() error {
 	var missing []string
 	for _, f := range []struct {
@@ -93,6 +94,7 @@ func (c Config) Validate() error {
 		{"data", c.Data},
 		{"addr", c.Addr},
 		{"user", c.User},
+		{"user_agent", c.UserAgent},
 	} {
 		if strings.TrimSpace(f.val) == "" {
 			missing = append(missing, f.name)
