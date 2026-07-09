@@ -47,6 +47,7 @@ type AreaSummary struct {
 type SummaryCell struct {
 	Class string   // go|warn|wet
 	Icons []string // one glyph, or two (rendered with a "/" between them)
+	Temp  string   // avg day-high across the area's crags, e.g. "58°"
 	Day   int      // index into CragsJSON[slug]
 	Label string   // aria-label
 }
@@ -104,6 +105,8 @@ type cragDay struct {
 	Temp    string
 	Rain    string
 	Soak    string
+	HighF   float64 // numeric day-high, for averaging the area temperature
+	Valid   bool    // false when the day had no data
 }
 
 // Run scrapes each region (or one, if region != "") and writes the region
@@ -177,18 +180,31 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 			verdicts := make([]Verdict, len(perCrag))
 			conds := make([][6]string, len(perCrag))
 			cragIcons := make([]string, len(perCrag))
+			var highSum float64
+			var highN int
 			for c := range perCrag {
 				cd := perCrag[c][i]
 				verdicts[c] = cd.Verdict
 				cragIcons[c] = iconOf(Result{Verdict: cd.Verdict, Reason: cd.Reason})
 				conds[c] = [6]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Rain, cd.Soak}
+				if cd.Valid { // average only the crags that returned data
+					highSum += cd.HighF
+					highN++
+				}
 			}
 			av := AreaVerdict(verdicts)
+			temp := "—"
+			label := fmt.Sprintf("%s: %s", dates[i].Format("Mon"), verdictWord(av))
+			if highN > 0 {
+				temp = fmt.Sprintf("%.0f°", highSum/float64(highN))
+				label += ", " + temp
+			}
 			summary.Cells = append(summary.Cells, SummaryCell{
 				Class: classOf(av),
 				Icons: areaIcon(av, cragIcons),
+				Temp:  temp,
 				Day:   i,
-				Label: fmt.Sprintf("%s: %s", dates[i].Format("Mon"), verdictWord(av)),
+				Label: label,
 			})
 			dayEntries[i] = []any{dayLabel(dates[i], i), conds}
 		}
@@ -262,7 +278,9 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 		}
 		cd := cragDay{Verdict: worse, Reason: reason, Temp: "—", Rain: "—", Soak: "—"}
 		if d.AM.Valid || d.PM.Valid {
-			cd.Temp = fmt.Sprintf("%.0f°", max(d.AM.TmaxF, d.PM.TmaxF))
+			cd.Valid = true
+			cd.HighF = max(d.AM.TmaxF, d.PM.TmaxF)
+			cd.Temp = fmt.Sprintf("%.0f°", cd.HighF)
 			cd.Rain = fmt.Sprintf("%.2f″", d.AM.PrecipIn+d.PM.PrecipIn)
 			cd.Soak = fmt.Sprintf("%.2f″", d.AM.Antecedent)
 		}

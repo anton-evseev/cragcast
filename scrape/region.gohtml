@@ -481,6 +481,7 @@
                     <button type="button" class="cell {{.Class}}" data-day="{{.Day}}">
                         <span class="icons"
                             >{{range $i, $ic := .Icons}}{{if $i}}<span class="sep">/</span>{{end}}<svg><use href="#{{$ic}}" /></svg>{{end}}</span
+                        ><span class="temp">{{.Temp}}</span
                         ><span class="sr-only">{{.Label}}</span>
                     </button>
                     {{- end}}
