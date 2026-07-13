@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"html/template"
+	"log"
 	"os"
 	"path/filepath"
 	"time"
@@ -139,6 +140,12 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 	region := RegionView{Region: r.Name, RegionId: r.Id, Updated: updated, Days: days}
 	cragsData := map[string][]any{} // slug -> per-day [label, [[name,class,reason,temp],...]]
 
+	total := 0 // crags in the region, for the scrape progress log
+	for _, a := range r.Areas {
+		total += len(a.Crags)
+	}
+	scraped := 0
+
 	for _, area := range r.Areas {
 		if len(area.Crags) == 0 {
 			continue // nothing to score — skip empty areas (no card, no subpage)
@@ -151,6 +158,8 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 		var perCrag [][]cragDay // [crag][day]
 
 		for _, c := range area.Crags {
+			scraped++
+			log.Printf("[%d/%d] Scraping data for %s/%s (%g, %g)...", scraped, total, area.Name, c.Name, c.Lat, c.Lon)
 			hours, err := f.Fetch(ctx, c.Lat, c.Lon, loc)
 			if err != nil {
 				return fmt.Errorf("fetch %s: %w", c.Name, err)
