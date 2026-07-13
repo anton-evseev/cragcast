@@ -290,45 +290,14 @@
         font-weight: 600;
         margin-bottom: 6px;
     }
-    .dw {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: baseline;
-        gap: 4px 8px;
-        margin-top: 4px;
-    }
-    .dw-when {
-        font-size: 11px;
-        font-weight: 600;
-        padding: 1px 8px;
-        border-radius: 999px;
-    }
-    .dw-when.go {
-        background: var(--go-bg);
-        color: var(--go-fg);
-    }
-    .dw-when.warn {
-        background: var(--warn-bg);
-        color: var(--warn-fg);
-    }
-    .dw-when.wet {
-        background: var(--wet-bg);
-        color: var(--wet-fg);
-    }
-    .dw-reason {
-        font-weight: 600;
-    }
-    .dw-stats {
-        color: var(--muted);
-        font-variant-numeric: tabular-nums;
-    }
-
-    /* crag-by-crag grid inside an area's day panel (region page) */
+    /* Shared day-detail grid: the per-crag list on the region page and the
+       AM/PM detail on the crag subpage use the same columns (label, reason,
+       temp, rain, 72h, dew, wind) so the two read as one. */
     .crag-grid {
         display: grid;
-        grid-template-columns: auto 1fr auto auto auto;
+        grid-template-columns: auto 1fr auto auto auto auto auto;
         align-items: baseline;
-        gap: 3px 10px;
+        gap: 3px 8px;
         margin-top: 4px;
     }
     .cg-head {
@@ -355,6 +324,7 @@
     .cg-num {
         justify-self: end;
         color: var(--muted);
+        font-size: 12px;
         font-variant-numeric: tabular-nums;
     }
 
@@ -499,7 +469,8 @@
 
         <script>
             // Tap an area's day cell to reveal that day's crag-by-crag list.
-            // CRAGS[areaId][dayIndex] = [dayLabel, [[name, class, reason, temp, rain, soak], ...]]
+            // CRAGS[areaId][dayIndex] =
+            //   [dayLabel, [[name, class, reason, temp, rain, soak, dew, wind], ...]]
             // (positional to keep the page small — see cragsData in scrape.go).
             var CRAGS = {{.CragsJSON}};
             (function () {
@@ -510,8 +481,9 @@
                     c.setAttribute("aria-expanded", "false");
                 });
 
-                // Lay the crags out as a grid so name/temp/rain/soak line up in
-                // columns down the card. c = [name, class, reason, temp, rain, soak].
+                // Lay the crags out as a grid so the columns line up down the
+                // card — the same columns the crag subpage shows per window.
+                // c = [name, class, reason, temp, rain, soak, dew, wind].
                 function crags(day) {
                     var rows = day[1]
                         .map(function (c) {
@@ -520,15 +492,19 @@
                                 '</span><span class="cg-reason">' + c[2] +
                                 '</span><span class="cg-num">' + c[3] +
                                 '</span><span class="cg-num">' + c[4] +
-                                '</span><span class="cg-num">' + c[5] + "</span>"
+                                '</span><span class="cg-num">' + c[5] +
+                                '</span><span class="cg-num">' + c[6] +
+                                '</span><span class="cg-num">' + c[7] + "</span>"
                             );
                         })
                         .join("");
                     return (
                         '<div class="crag-grid"><span></span><span></span>' +
-                        '<span class="cg-head">high</span>' +
+                        '<span class="cg-head">temp</span>' +
                         '<span class="cg-head">rain</span>' +
-                        '<span class="cg-head">72h</span>' + rows + "</div>"
+                        '<span class="cg-head">72h</span>' +
+                        '<span class="cg-head">dew</span>' +
+                        '<span class="cg-head">wind</span>' + rows + "</div>"
                     );
                 }
 

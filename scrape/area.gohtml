@@ -84,18 +84,23 @@
                     c.setAttribute("aria-expanded", "false");
                 });
 
-                // win = "class,reason,temp,precip,soak,dew,wind"
+                // win = "class,reason,temp,precip,soak,dew,wind"; stats blank on
+                // no data. Rendered as grid cells (label, reason, temp, rain,
+                // 72h, dew, wind) so AM and PM line up — the same columns the
+                // region page's crag list uses (see .crag-grid).
                 function row(label, win) {
                     var p = win.split(",");
-                    var stats = p[2]
-                        ? '<span class="dw-stats">' +
-                          p[2] + "° · rain " + p[3] + "″ · 72h " + p[4] +
-                          "″ · dew " + p[5] + "° · wind " + p[6] + " mph</span>"
-                        : "";
+                    function num(v, unit) {
+                        return (
+                            '<span class="cg-num">' +
+                            (p[2] ? v + unit : "—") + "</span>"
+                        );
+                    }
                     return (
-                        '<div class="dw"><span class="dw-when ' + p[0] + '">' +
-                        label + '</span><span class="dw-reason">' + p[1] +
-                        "</span>" + stats + "</div>"
+                        '<span class="cg-name ' + p[0] + '">' + label +
+                        '</span><span class="cg-reason">' + p[1] + "</span>" +
+                        num(p[2], "°") + num(p[3], "″") + num(p[4], "″") +
+                        num(p[5], "°") + num(p[6], " mph")
                     );
                 }
 
@@ -122,8 +127,15 @@
                     panel.innerHTML =
                         '<button type="button" class="detail-close" aria-label="Close details">×</button>' +
                         '<div class="detail-day">' + cell.dataset.day + "</div>" +
+                        '<div class="crag-grid"><span></span><span></span>' +
+                        '<span class="cg-head">temp</span>' +
+                        '<span class="cg-head">rain</span>' +
+                        '<span class="cg-head">72h</span>' +
+                        '<span class="cg-head">dew</span>' +
+                        '<span class="cg-head">wind</span>' +
                         row("AM", cell.dataset.am) +
-                        row("PM", cell.dataset.pm);
+                        row("PM", cell.dataset.pm) +
+                        "</div>";
                     panel.hidden = false;
                     cell.setAttribute("aria-expanded", "true");
                     active = cell;

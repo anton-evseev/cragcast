@@ -99,14 +99,17 @@ type Half struct {
 }
 
 // cragDay is one crag's day collapsed to a single verdict (the worse of its two
-// windows) with the numbers that explain it — day-high, in-window rain, and the
-// 72h antecedent soak. Feeds the area summary and the client-side crag list.
+// windows) with the numbers that explain it — day-high, in-window rain, 72h
+// antecedent soak, plus peak dew point and wind. These are the same columns the
+// crag subpage shows per window, so the region crag list reads as one with it.
 type cragDay struct {
 	Verdict Verdict
 	Reason  string
 	Temp    string
 	Rain    string
 	Soak    string
+	Dew     string
+	Wind    string
 	HighF   float64 // numeric day-high, for averaging the area temperature
 	Valid   bool    // false when the day had no data
 }
@@ -188,7 +191,7 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 		dayEntries := make([]any, len(dates))
 		for i := range dates {
 			verdicts := make([]Verdict, len(perCrag))
-			conds := make([][6]string, len(perCrag))
+			conds := make([][8]string, len(perCrag))
 			cragIcons := make([]string, len(perCrag))
 			var highSum float64
 			var highN int
@@ -196,7 +199,7 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 				cd := perCrag[c][i]
 				verdicts[c] = cd.Verdict
 				cragIcons[c] = iconOf(Result{Verdict: cd.Verdict, Reason: cd.Reason})
-				conds[c] = [6]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Rain, cd.Soak}
+				conds[c] = [8]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Rain, cd.Soak, cd.Dew, cd.Wind}
 				if cd.Valid { // average only the crags that returned data
 					highSum += cd.HighF
 					highN++
@@ -286,13 +289,15 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 		if pm.Verdict > am.Verdict {
 			worse, reason = pm.Verdict, pm.Reason
 		}
-		cd := cragDay{Verdict: worse, Reason: reason, Temp: "—", Rain: "—", Soak: "—"}
+		cd := cragDay{Verdict: worse, Reason: reason, Temp: "—", Rain: "—", Soak: "—", Dew: "—", Wind: "—"}
 		if d.AM.Valid || d.PM.Valid {
 			cd.Valid = true
 			cd.HighF = max(d.AM.TmaxF, d.PM.TmaxF)
 			cd.Temp = fmt.Sprintf("%.0f°", cd.HighF)
 			cd.Rain = fmt.Sprintf("%.2f″", d.AM.PrecipIn+d.PM.PrecipIn)
 			cd.Soak = fmt.Sprintf("%.2f″", d.AM.Antecedent)
+			cd.Dew = fmt.Sprintf("%.0f°", max(d.AM.DewMaxF, d.PM.DewMaxF))
+			cd.Wind = fmt.Sprintf("%.0f mph", max(d.AM.WindMaxMph, d.PM.WindMaxMph))
 		}
 		out = append(out, cd)
 	}
