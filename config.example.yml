@@ -3,5 +3,6 @@ data: ./data
 addr: ":8090"
 user: cragcast
 user_agent: CragCast/1.0 (https://github.com/anton-evseev/cragcast)
+github: https://github.com/anton-evseev/cragcast
 regions:
   - seattle

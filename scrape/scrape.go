@@ -25,18 +25,25 @@ type ScrapeOptions struct {
 	Regions   []config.Region
 	DataDir   string
 	UserAgent string
+	Github    string
 }
 
 // ----- view models -----
+
+// pageChrome is the header/footer context every rendered page shares.
+type pageChrome struct {
+	Region   string
+	RegionId string
+	Updated  string
+	Github   string
+	Days     []DayHeader
+}
 
 // RegionView is the summary page: one row per area, colored by the area-level
 // verdict. CragsJSON carries the per-day crag breakdown the client reveals when
 // a day cell is tapped.
 type RegionView struct {
-	Region    string
-	RegionId  string
-	Updated   string
-	Days      []DayHeader
+	pageChrome
 	Areas     []AreaSummary
 	CragsJSON template.JS
 }
@@ -56,12 +63,9 @@ type SummaryCell struct {
 
 // AreaPageView is the per-area subpage: the full crag-by-crag forecast.
 type AreaPageView struct {
-	Region   string
-	RegionId string
+	pageChrome
 	AreaName string
 	Drive    string
-	Updated  string
-	Days     []DayHeader
 	Crags    []CragView
 }
 
@@ -114,33 +118,48 @@ type cragDay struct {
 	Valid   bool    // false when the day had no data
 }
 
+// scraper holds the deployment-wide context for a run so it need not be threaded
+// through every call: the forecaster, scoring thresholds, output dir, and the
+// footer repo link.
+type scraper struct {
+	fc      Forecaster
+	th      Thresholds
+	dataDir string
+	github  string
+}
+
 // Run scrapes each region (or one, if region != "") and writes the region
 // summary page plus a subpage per area under data/<region>/.
 func Run(o ScrapeOptions) error {
-	f := NewOpenMeteo(o.UserAgent)
-	th := DefaultThresholds()
-
+	s := &scraper{
+		fc:      NewOpenMeteo(o.UserAgent),
+		th:      DefaultThresholds(),
+		dataDir: o.DataDir,
+		github:  o.Github,
+	}
 	for _, r := range o.Regions {
-		if err := scrapeRegion(f, th, r, o.DataDir); err != nil {
+		if err := s.region(r); err != nil {
 			return fmt.Errorf("region %s: %w", r.Name, err)
 		}
 	}
 	return nil
 }
 
-func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) error {
+func (s *scraper) region(r config.Region) error {
 	loc, err := time.LoadLocation(r.Timezone)
 	if err != nil {
 		return fmt.Errorf("bad timezone %q: %w", r.Timezone, err)
 	}
 	now := time.Now().In(loc)
-	updated := now.Format("Jan 2, 3:04 PM")
-	days := dayHeaders(now, loc)
+	chrome := pageChrome{
+		Region: r.Name, RegionId: r.Id, Github: s.github,
+		Updated: now.Format("Jan 2, 3:04 PM"), Days: dayHeaders(now, loc),
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	region := RegionView{Region: r.Name, RegionId: r.Id, Updated: updated, Days: days}
+	view := RegionView{pageChrome: chrome}
 	cragsData := map[string][]any{} // slug -> per-day [label, [[name,class,reason,temp],...]]
 
 	total := 0 // crags in the region, for the scrape progress log
@@ -153,17 +172,14 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 		if len(area.Crags) == 0 {
 			continue // nothing to score — skip empty areas (no card, no subpage)
 		}
-		page := AreaPageView{
-			Region: r.Name, RegionId: r.Id, AreaName: area.Name,
-			Drive: area.Drive, Updated: updated, Days: days,
-		}
+		page := AreaPageView{pageChrome: chrome, AreaName: area.Name, Drive: area.Drive}
 		var dates []time.Time
 		var perCrag [][]cragDay // [crag][day]
 
 		for _, c := range area.Crags {
 			scraped++
 			log.Printf("[%d/%d] Scraping data for %s/%s (%g, %g)...", scraped, total, area.Name, c.Name, c.Lat, c.Lon)
-			hours, err := f.Fetch(ctx, c.Lat, c.Lon, loc)
+			hours, err := s.fc.Fetch(ctx, c.Lat, c.Lon, loc)
 			if err != nil {
 				return fmt.Errorf("fetch %s: %w", c.Name, err)
 			}
@@ -182,9 +198,9 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 				Name:       c.Name,
 				Aspect:     c.Aspect,
 				AspectIcon: aspectIcon(c.Aspect),
-				Cells:      cells(fc, prof, th),
+				Cells:      cells(fc, prof, s.th),
 			})
-			perCrag = append(perCrag, cragDays(fc, prof, th))
+			perCrag = append(perCrag, cragDays(fc, prof, s.th))
 		}
 
 		summary := AreaSummary{Name: area.Name, Id: area.Id, Drive: area.Drive}
@@ -221,10 +237,10 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 			})
 			dayEntries[i] = []any{dayLabel(dates[i], i), conds}
 		}
-		region.Areas = append(region.Areas, summary)
+		view.Areas = append(view.Areas, summary)
 		cragsData[area.Id] = dayEntries
 
-		if err := render(dataDir, filepath.Join(r.Id, area.Id+".html"), "area.gohtml", page); err != nil {
+		if err := s.render(filepath.Join(r.Id, area.Id+".html"), "area.gohtml", page); err != nil {
 			return err
 		}
 	}
@@ -233,18 +249,18 @@ func scrapeRegion(f Forecaster, th Thresholds, r config.Region, dataDir string) 
 	if err != nil {
 		return fmt.Errorf("encode crag data: %w", err)
 	}
-	region.CragsJSON = template.JS(blob)
-	return render(dataDir, r.Id+".html", "region.gohtml", region)
+	view.CragsJSON = template.JS(blob)
+	return s.render(r.Id+".html", "region.gohtml", view)
 }
 
 // render executes a named template and atomically writes it to dataDir/rel,
 // creating parent directories as needed.
-func render(dataDir, rel, name string, data any) error {
+func (s *scraper) render(rel, name string, data any) error {
 	var buf bytes.Buffer
 	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
 		return fmt.Errorf("render %s: %w", rel, err)
 	}
-	path := filepath.Join(dataDir, rel)
+	path := filepath.Join(s.dataDir, rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}

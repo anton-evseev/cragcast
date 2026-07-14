@@ -75,7 +75,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		return scrape.Run(scrape.ScrapeOptions{Regions: regions, DataDir: dataDir, UserAgent: cfg.UserAgent})
+		return scrape.Run(scrape.ScrapeOptions{Regions: regions, DataDir: dataDir, UserAgent: cfg.UserAgent, Github: cfg.Github})
 	case "serve":
 		regions, err := loadRegions(configDir, cfg.Regions)
 		if err != nil {

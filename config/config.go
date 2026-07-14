@@ -17,6 +17,7 @@ type Config struct {
 	Data      string   `yaml:"data"`
 	User      string   `yaml:"user"`
 	UserAgent string   `yaml:"user_agent"` // sent to Open-Meteo when scraping
+	Github    string   `yaml:"github"`     // optional repo URL, linked in the footer
 	Regions   []string `yaml:"regions"`
 }
 
