@@ -128,14 +128,6 @@
                 color: var(--muted);
             }
 
-            footer {
-                margin-top: 34px;
-                padding-top: 14px;
-                border-top: 1px solid var(--hair);
-                font-size: 12px;
-                color: var(--muted);
-                text-align: center;
-            }
 
             :focus-visible {
                 outline: 2px solid var(--text);
@@ -238,10 +230,7 @@
                 <a href="mailto:you@example.com">you@example.com</a>.
             </p>
 
-            <footer>
-                Forecast data from the National Weather Service &middot;
-                <a href="https://github.com/you/cragcast">Source on GitHub</a>
-            </footer>
+            {{template "footer" .Footer}}
         </div>
     </body>
 </html>

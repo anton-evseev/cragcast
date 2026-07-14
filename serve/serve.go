@@ -1,11 +1,10 @@
 package serve
 
 import (
+	"bytes"
 	"crypto/rand"
-	"embed"
 	"errors"
 	"fmt"
-	"html/template"
 	"log"
 	"net/http"
 	"os"
@@ -14,15 +13,14 @@ import (
 	"time"
 
 	"github.com/anton-evseev/cragcast/config"
+	"github.com/anton-evseev/cragcast/web"
 )
-
-//go:embed about.html error.gohtml
-var embedded embed.FS
 
 type ServeOptions struct {
 	Regions []config.Region
 	DataDir string
 	Addr    string
+	Github  string
 }
 
 type server struct {
@@ -30,8 +28,8 @@ type server struct {
 	areas     map[string][]string // region id -> area ids (non-empty areas only)
 	dataDir   string
 	addr      string
+	github    string
 	aboutPage []byte
-	errorTmpl *template.Template
 }
 
 const (
@@ -60,13 +58,11 @@ func newServer(opts ServeOptions) (*server, error) {
 	if len(opts.Regions) == 0 {
 		return nil, errors.New("no regions configured")
 	}
-	about, err := embedded.ReadFile("about.html")
-	if err != nil {
-		return nil, fmt.Errorf("read about.html: %w", err)
-	}
-	errTmpl, err := template.ParseFS(embedded, "error.gohtml")
-	if err != nil {
-		return nil, fmt.Errorf("parse error.gohtml: %w", err)
+	var about bytes.Buffer
+	if err := web.About(&about, web.AboutView{
+		Footer: web.FooterData{Github: opts.Github, ShowAbout: false},
+	}); err != nil {
+		return nil, fmt.Errorf("render about page: %w", err)
 	}
 	regionIds := make([]string, len(opts.Regions))
 	areas := make(map[string][]string, len(opts.Regions))
@@ -84,8 +80,8 @@ func newServer(opts ServeOptions) (*server, error) {
 		regions:   regionIds,
 		areas:     areas,
 		dataDir:   opts.DataDir,
-		aboutPage: about,
-		errorTmpl: errTmpl,
+		github:    opts.Github,
+		aboutPage: about.Bytes(),
 	}, nil
 }
 
@@ -171,7 +167,10 @@ func (s *server) serveError(w http.ResponseWriter, r *http.Request, kind errKind
 	}
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	if err := s.errorTmpl.Execute(w, map[string]any{"Status": status, "Message": msg}); err != nil {
+	if err := web.Error(w, web.ErrorView{
+		Status: status, Message: msg,
+		Footer: web.FooterData{Github: s.github, ShowAbout: true},
+	}); err != nil {
 		log.Printf("render error page: %v", err)
 	}
 }

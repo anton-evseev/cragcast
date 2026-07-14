@@ -3,7 +3,6 @@ package scrape
 import (
 	"bytes"
 	"context"
-	"embed"
 	"encoding/json"
 	"fmt"
 	"html/template"
@@ -13,11 +12,8 @@ import (
 	"time"
 
 	"github.com/anton-evseev/cragcast/config"
+	"github.com/anton-evseev/cragcast/web"
 )
-
-//go:embed region.gohtml area.gohtml
-var tmplFS embed.FS
-var tmpl = template.Must(template.New("cragcast").ParseFS(tmplFS, "region.gohtml", "area.gohtml"))
 
 const forecastDays = 7
 
@@ -26,80 +22,6 @@ type ScrapeOptions struct {
 	DataDir   string
 	UserAgent string
 	Github    string
-}
-
-// ----- view models -----
-
-// pageChrome is the header/footer context every rendered page shares.
-type pageChrome struct {
-	Region   string
-	RegionId string
-	Updated  string
-	Github   string
-	Days     []DayHeader
-}
-
-// RegionView is the summary page: one row per area, colored by the area-level
-// verdict. CragsJSON carries the per-day crag breakdown the client reveals when
-// a day cell is tapped.
-type RegionView struct {
-	pageChrome
-	Areas     []AreaSummary
-	CragsJSON template.JS
-}
-type AreaSummary struct {
-	Name  string
-	Id    string
-	Drive string
-	Cells []SummaryCell // exactly forecastDays
-}
-type SummaryCell struct {
-	Class string   // go|warn|wet
-	Icons []string // one glyph, or two (rendered with a "/" between them)
-	Temp  string   // avg day-high across the area's crags, e.g. "58°"
-	Day   int      // index into CragsJSON[slug]
-	Label string   // aria-label
-}
-
-// AreaPageView is the per-area subpage: the full crag-by-crag forecast.
-type AreaPageView struct {
-	pageChrome
-	AreaName string
-	Drive    string
-	Crags    []CragView
-}
-
-type DayHeader struct {
-	Label string // "Today", "Wed", ...
-	Date  string // "Jun 16"
-}
-type CragView struct {
-	Name       string
-	Aspect     string
-	AspectIcon string
-	Cells      []Cell // exactly forecastDays
-}
-
-// Cell is either a solid verdict or a split AM/PM pair (template branches on Split).
-type Cell struct {
-	Split bool
-	Class string // solid: go|warn|wet
-	Icon  string // solid icon id
-	Temp  string // solid day-high, e.g. "58°"
-	AM    Half
-	PM    Half
-	Label string // aria-label
-
-	// Tap-to-expand detail. Carried as compact data-* attributes and formatted
-	// client-side (see the script in area.gohtml). Each window string is
-	// "class,reason,temp,precip,soak,dew,wind"; stats are empty when no data.
-	Day    string // panel header, e.g. "Wed, Jun 18"
-	AMData string
-	PMData string
-}
-type Half struct {
-	Class string
-	Icon  string
 }
 
 // cragDay is one crag's day collapsed to a single verdict (the worse of its two
@@ -151,15 +73,16 @@ func (s *scraper) region(r config.Region) error {
 		return fmt.Errorf("bad timezone %q: %w", r.Timezone, err)
 	}
 	now := time.Now().In(loc)
-	chrome := pageChrome{
-		Region: r.Name, RegionId: r.Id, Github: s.github,
+	chrome := web.Chrome{
+		Region: r.Name, RegionId: r.Id,
+		Footer:  web.FooterData{Github: s.github, ShowAbout: true},
 		Updated: now.Format("Jan 2, 3:04 PM"), Days: dayHeaders(now, loc),
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	view := RegionView{pageChrome: chrome}
+	view := web.RegionView{Chrome: chrome}
 	cragsData := map[string][]any{} // slug -> per-day [label, [[name,class,reason,temp],...]]
 
 	total := 0 // crags in the region, for the scrape progress log
@@ -172,7 +95,7 @@ func (s *scraper) region(r config.Region) error {
 		if len(area.Crags) == 0 {
 			continue // nothing to score — skip empty areas (no card, no subpage)
 		}
-		page := AreaPageView{pageChrome: chrome, AreaName: area.Name, Drive: area.Drive}
+		page := web.AreaView{Chrome: chrome, AreaName: area.Name, Drive: area.Drive}
 		var dates []time.Time
 		var perCrag [][]cragDay // [crag][day]
 
@@ -194,7 +117,7 @@ func (s *scraper) region(r config.Region) error {
 				DryoutInches: DryoutFor(c.Rock),
 				Seepage:      c.Seepage,
 			}
-			page.Crags = append(page.Crags, CragView{
+			page.Crags = append(page.Crags, web.CragView{
 				Name:       c.Name,
 				Aspect:     c.Aspect,
 				AspectIcon: aspectIcon(c.Aspect),
@@ -203,7 +126,7 @@ func (s *scraper) region(r config.Region) error {
 			perCrag = append(perCrag, cragDays(fc, prof, s.th))
 		}
 
-		summary := AreaSummary{Name: area.Name, Id: area.Id, Drive: area.Drive}
+		summary := web.AreaSummary{Name: area.Name, Id: area.Id, Drive: area.Drive}
 		dayEntries := make([]any, len(dates))
 		for i := range dates {
 			verdicts := make([]Verdict, len(perCrag))
@@ -228,7 +151,7 @@ func (s *scraper) region(r config.Region) error {
 				temp = fmt.Sprintf("%.0f°", highSum/float64(highN))
 				label += ", " + temp
 			}
-			summary.Cells = append(summary.Cells, SummaryCell{
+			summary.Cells = append(summary.Cells, web.SummaryCell{
 				Class: classOf(av),
 				Icons: areaIcon(av, cragIcons),
 				Temp:  temp,
@@ -240,7 +163,11 @@ func (s *scraper) region(r config.Region) error {
 		view.Areas = append(view.Areas, summary)
 		cragsData[area.Id] = dayEntries
 
-		if err := s.render(filepath.Join(r.Id, area.Id+".html"), "area.gohtml", page); err != nil {
+		var buf bytes.Buffer
+		if err := web.Area(&buf, page); err != nil {
+			return fmt.Errorf("render area %s: %w", area.Id, err)
+		}
+		if err := s.write(filepath.Join(r.Id, area.Id+".html"), buf.Bytes()); err != nil {
 			return err
 		}
 	}
@@ -250,30 +177,29 @@ func (s *scraper) region(r config.Region) error {
 		return fmt.Errorf("encode crag data: %w", err)
 	}
 	view.CragsJSON = template.JS(blob)
-	return s.render(r.Id+".html", "region.gohtml", view)
+	var buf bytes.Buffer
+	if err := web.Region(&buf, view); err != nil {
+		return fmt.Errorf("render region: %w", err)
+	}
+	return s.write(r.Id+".html", buf.Bytes())
 }
 
-// render executes a named template and atomically writes it to dataDir/rel,
-// creating parent directories as needed.
-func (s *scraper) render(rel, name string, data any) error {
-	var buf bytes.Buffer
-	if err := tmpl.ExecuteTemplate(&buf, name, data); err != nil {
-		return fmt.Errorf("render %s: %w", rel, err)
-	}
+// write atomically saves data to dataDir/rel, creating parent dirs as needed.
+func (s *scraper) write(rel string, data []byte) error {
 	path := filepath.Join(s.dataDir, rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return atomicWrite(path, buf.Bytes())
+	return atomicWrite(path, data)
 }
 
 // cells scores both windows per day and collapses to solid or split.
-func cells(days []DayForecast, p Profile, th Thresholds) []Cell {
-	out := make([]Cell, 0, len(days))
+func cells(days []DayForecast, p Profile, th Thresholds) []web.Cell {
+	out := make([]web.Cell, 0, len(days))
 	for i, d := range days {
 		am := Score(d.AM, p, "AM", th)
 		pm := Score(d.PM, p, "PM", th)
-		cell := Cell{
+		cell := web.Cell{
 			Day:    dayLabel(d.Date, i),
 			AMData: windowData(d.AM, am),
 			PMData: windowData(d.PM, pm),
@@ -285,8 +211,8 @@ func cells(days []DayForecast, p Profile, th Thresholds) []Cell {
 			cell.Label = fmt.Sprintf("%s, %s", d.Date.Format("Mon"), am.Reason)
 		} else {
 			cell.Split = true
-			cell.AM = Half{Class: classOf(am.Verdict), Icon: iconOf(am)}
-			cell.PM = Half{Class: classOf(pm.Verdict), Icon: iconOf(pm)}
+			cell.AM = web.Half{Class: classOf(am.Verdict), Icon: iconOf(am)}
+			cell.PM = web.Half{Class: classOf(pm.Verdict), Icon: iconOf(pm)}
 			cell.Label = fmt.Sprintf("%s, AM %s, PM %s", d.Date.Format("Mon"), am.Reason, pm.Reason)
 		}
 		out = append(out, cell)
@@ -341,16 +267,16 @@ func dayLabel(date time.Time, i int) string {
 	return date.Format("Mon, Jan 2")
 }
 
-func dayHeaders(now time.Time, loc *time.Location) []DayHeader {
+func dayHeaders(now time.Time, loc *time.Location) []web.DayHeader {
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc)
-	hs := make([]DayHeader, 0, forecastDays)
+	hs := make([]web.DayHeader, 0, forecastDays)
 	for d := 0; d < forecastDays; d++ {
 		date := today.AddDate(0, 0, d)
 		label := date.Format("Mon")
 		if d == 0 {
 			label = "Today"
 		}
-		hs = append(hs, DayHeader{Label: label, Date: date.Format("Jan 2")})
+		hs = append(hs, web.DayHeader{Label: label, Date: date.Format("Jan 2")})
 	}
 	return hs
 }

@@ -65,12 +65,7 @@
                 {{- end}}
             </section>
 
-            <footer>
-                Forecast data by
-                <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0).
-                <a href="/about">About CragCast</a>{{if .Github}} ·
-                <a href="{{.Github}}">GitHub</a>{{end}}
-            </footer>
+            {{template "footer" .Footer}}
         </div>
 
         <script>

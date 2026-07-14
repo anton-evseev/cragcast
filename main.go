@@ -81,7 +81,7 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		return serve.Run(serve.ServeOptions{Regions: regions, DataDir: dataDir, Addr: cfg.Addr})
+		return serve.Run(serve.ServeOptions{Regions: regions, DataDir: dataDir, Addr: cfg.Addr, Github: cfg.Github})
 	}
 	return nil
 }

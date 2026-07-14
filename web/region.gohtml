@@ -328,18 +328,6 @@
         font-variant-numeric: tabular-nums;
     }
 
-    /* ---- footer ---- */
-    footer {
-        margin-top: 22px;
-        padding-top: 14px;
-        border-top: 1px solid var(--hair);
-        font-size: 12px;
-        color: var(--muted);
-        text-align: center;
-    }
-    footer a {
-        color: inherit;
-    }
 
     /* desktop shows all 7 days */
     @media (min-width: 640px) {
@@ -460,12 +448,7 @@
             </section>
             {{end}}
 
-            <footer>
-                Forecast data by
-                <a href="https://open-meteo.com/">Open-Meteo</a> (CC BY 4.0).
-                <a href="/about">About CragCast</a>{{if .Github}} ·
-                <a href="{{.Github}}">GitHub</a>{{end}}
-            </footer>
+            {{template "footer" .Footer}}
         </div>
 
         <script>
