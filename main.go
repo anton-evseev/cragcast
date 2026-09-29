@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/anton-evseev/cragcast/bundle"
 	"github.com/anton-evseev/cragcast/config"
 	"github.com/anton-evseev/cragcast/gen"
 	"github.com/anton-evseev/cragcast/scrape"
@@ -22,11 +23,14 @@ func main() {
 }
 
 func run(args []string) error {
-	cmds := []string{"gen-cron", "gen-systemd", "scrape", "serve"}
+	cmds := []string{"bundle", "gen-cron", "gen-systemd", "scrape", "serve"}
 	if len(args) == 0 || !slices.Contains(cmds, args[0]) {
 		return fmt.Errorf("usage: cragcast <%s> [flags]", strings.Join(cmds, "|"))
 	}
 	cmd, rest := args[0], args[1:]
+	if cmd == "bundle" {
+		return runBundle(rest)
+	}
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to config.yml")
@@ -84,6 +88,26 @@ func run(args []string) error {
 		return serve.Run(serve.ServeOptions{Regions: regions, DataDir: dataDir, Addr: cfg.Addr, Github: cfg.Github})
 	}
 	return nil
+}
+
+func runBundle(args []string) error {
+	fs := flag.NewFlagSet("bundle", flag.ContinueOnError)
+	regionId := fs.String("region", "", "region id")
+	from := fs.String("from", "", "directory containing scraped HTML")
+	out := fs.String("out", "", "new directory for static assets")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("bundle: unexpected arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *regionId == "" || strings.ContainsAny(*regionId, "/\\ \t") || *regionId == "." || *regionId == ".." {
+		return fmt.Errorf("bundle: invalid region %q", *regionId)
+	}
+	if *from == "" || *out == "" {
+		return fmt.Errorf("bundle: --from and --out are required")
+	}
+	return bundle.Run(bundle.Options{Region: *regionId, From: *from, Out: *out})
 }
 
 func loadRegions(configDir string, regionIds []string) ([]config.Region, error) {
