@@ -83,9 +83,7 @@ func LoadRegionConfig(path string) (Region, error) {
 }
 
 // Validate checks the deployment config for missing fields. All fields are
-// required: bin/user feed the generated cron and systemd units, addr/data feed
-// serve and scrape, and user_agent identifies the deployment to Open-Meteo, so
-// a config that omits any of them is incomplete for at least one command.
+// required by serve or the cron and systemd generators.
 func (c Config) Validate() error {
 	var missing []string
 	for _, f := range []struct {

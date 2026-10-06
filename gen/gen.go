@@ -4,6 +4,7 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
+	"strings"
 	"text/template"
 
 	"github.com/anton-evseev/cragcast/config"
@@ -16,15 +17,18 @@ var cronTmpl string
 var systemdTmpl string
 
 var (
-	cron    = template.Must(template.New("cron").Parse(cronTmpl))
+	cron    = template.Must(template.New("cron").Funcs(template.FuncMap{"quote": shellQuote}).Parse(cronTmpl))
 	systemd = template.Must(template.New("systemd").Parse(systemdTmpl))
 )
 
 type CronOptions struct {
-	ConfigPath string
 	Bin        string
 	User       string
 	Regions    []config.Region
+	RegionsDir string
+	Out        string
+	UserAgent  string
+	Github     string
 }
 
 type SystemdOptions struct {
@@ -45,4 +49,8 @@ func RunSystemd(o SystemdOptions) error {
 		return fmt.Errorf("generate systemd: %w", err)
 	}
 	return nil
+}
+
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", "'\"'\"'") + "'"
 }

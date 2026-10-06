@@ -31,13 +31,12 @@ func run(args []string) error {
 	if cmd == "bundle" {
 		return runBundle(rest)
 	}
+	if cmd == "scrape" {
+		return runScrape(rest)
+	}
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to config.yml")
-	var region *string
-	if cmd == "scrape" {
-		region = fs.String("region", "", "limit to a single region id")
-	}
 	if err := fs.Parse(rest); err != nil {
 		return err
 	}
@@ -67,19 +66,13 @@ func run(args []string) error {
 		if err != nil {
 			return err
 		}
-		return gen.RunCron(gen.CronOptions{ConfigPath: absConfig, Bin: cfg.Bin, User: cfg.User, Regions: regions})
+		return gen.RunCron(gen.CronOptions{
+			Bin: cfg.Bin, User: cfg.User, Regions: regions,
+			RegionsDir: filepath.Join(configDir, "regions"), Out: dataDir,
+			UserAgent: cfg.UserAgent, Github: cfg.Github,
+		})
 	case "gen-systemd":
 		return gen.RunSystemd(gen.SystemdOptions{ConfigPath: absConfig, Bin: cfg.Bin, User: cfg.User})
-	case "scrape":
-		regionIds := cfg.Regions
-		if *region != "" {
-			regionIds = []string{*region}
-		}
-		regions, err := loadRegions(configDir, regionIds)
-		if err != nil {
-			return err
-		}
-		return scrape.Run(scrape.ScrapeOptions{Regions: regions, DataDir: dataDir, UserAgent: cfg.UserAgent, Github: cfg.Github})
 	case "serve":
 		regions, err := loadRegions(configDir, cfg.Regions)
 		if err != nil {
@@ -88,6 +81,37 @@ func run(args []string) error {
 		return serve.Run(serve.ServeOptions{Regions: regions, DataDir: dataDir, Addr: cfg.Addr, Github: cfg.Github})
 	}
 	return nil
+}
+
+func runScrape(args []string) error {
+	fs := flag.NewFlagSet("scrape", flag.ContinueOnError)
+	regionID := fs.String("region", "", "region id")
+	regionsDir := fs.String("regions-dir", "regions", "directory containing regional YAML files")
+	out := fs.String("out", "", "directory for scraped HTML")
+	userAgent := fs.String("user-agent", "", "user agent for weather requests")
+	github := fs.String("github", "", "optional repository URL for page footers")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("scrape: unexpected arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if *regionID == "" || strings.ContainsAny(*regionID, "/\\ \t") || *regionID == "." || *regionID == ".." {
+		return fmt.Errorf("scrape: invalid region %q", *regionID)
+	}
+	if *out == "" || strings.TrimSpace(*userAgent) == "" {
+		return fmt.Errorf("scrape: --out and --user-agent are required")
+	}
+	region, err := config.LoadRegionConfig(filepath.Join(*regionsDir, *regionID+".yml"))
+	if err != nil {
+		return err
+	}
+	if region.Id != *regionID {
+		return fmt.Errorf("scrape: region id %q in config does not match %q", region.Id, *regionID)
+	}
+	return scrape.Run(scrape.ScrapeOptions{
+		Regions: []config.Region{region}, DataDir: *out, UserAgent: *userAgent, Github: *github,
+	})
 }
 
 func runBundle(args []string) error {

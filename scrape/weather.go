@@ -30,7 +30,7 @@ type Forecaster interface {
 type OpenMeteo struct {
 	Client    *http.Client
 	BaseURL   string // defaults to the public endpoint
-	UserAgent string // identifies this deployment to Open-Meteo (required by config)
+	UserAgent string // identifies this deployment to Open-Meteo
 }
 
 func NewOpenMeteo(userAgent string) *OpenMeteo {
