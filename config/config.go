@@ -81,8 +81,8 @@ func LoadRegionConfig(path string) (Region, error) {
 	return c, nil
 }
 
-// Validate checks the deployment config for missing fields. All fields are
-// required by serve or the cron and systemd generators.
+// Validate checks the deployment config for fields used by the cron and
+// systemd generators.
 func (c Config) Validate() error {
 	var missing []string
 	for _, f := range []struct {

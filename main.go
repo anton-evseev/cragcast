@@ -34,6 +34,9 @@ func run(args []string) error {
 	if cmd == "scrape" {
 		return runScrape(rest)
 	}
+	if cmd == "serve" {
+		return runServe(rest)
+	}
 
 	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
 	configPath := fs.String("config", "", "path to config.yml")
@@ -49,10 +52,8 @@ func run(args []string) error {
 		return err
 	}
 
-	// Anchor config-relative paths (the regions dir, the data dir, and the
-	// config path baked into generated units) to the config file's own
-	// directory, so every command works regardless of the working directory it
-	// is launched from — cron and systemd set none.
+	// Anchor paths used by generated cron and systemd units to the config file's
+	// directory, since neither scheduler sets a working directory.
 	absConfig, err := filepath.Abs(*configPath)
 	if err != nil {
 		return err
@@ -72,13 +73,11 @@ func run(args []string) error {
 			Github: cfg.Github,
 		})
 	case "gen-systemd":
-		return gen.RunSystemd(gen.SystemdOptions{ConfigPath: absConfig, Bin: cfg.Bin, User: cfg.User})
-	case "serve":
-		regions, err := loadRegions(configDir, cfg.Regions)
-		if err != nil {
-			return err
-		}
-		return serve.Run(serve.ServeOptions{Regions: regions, DataDir: dataDir, Addr: cfg.Addr, Github: cfg.Github})
+		return gen.RunSystemd(gen.SystemdOptions{
+			Bin: cfg.Bin, User: cfg.User, Regions: cfg.Regions,
+			RegionsDir: filepath.Join(configDir, "regions"), From: dataDir,
+			Addr: cfg.Addr, Github: cfg.Github,
+		})
 	}
 	return nil
 }
@@ -111,6 +110,46 @@ func runScrape(args []string) error {
 	return scrape.Run(scrape.ScrapeOptions{
 		Regions: []config.Region{region}, DataDir: *out, Github: *github,
 	})
+}
+
+func runServe(args []string) error {
+	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	var regionIDs []string
+	fs.Func("region", "region id (repeat for multiple regions)", func(id string) error {
+		if id == "" || strings.ContainsAny(id, "/\\ \t") || id == "." || id == ".." {
+			return fmt.Errorf("invalid region %q", id)
+		}
+		if slices.Contains(regionIDs, id) {
+			return fmt.Errorf("duplicate region %q", id)
+		}
+		regionIDs = append(regionIDs, id)
+		return nil
+	})
+	regionsDir := fs.String("regions-dir", "regions", "directory containing regional YAML files")
+	from := fs.String("from", "", "directory containing scraped HTML")
+	addr := fs.String("addr", ":8090", "address to listen on")
+	github := fs.String("github", "", "optional repository URL for page footers")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("serve: unexpected arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	if len(regionIDs) == 0 || *from == "" {
+		return fmt.Errorf("serve: --region and --from are required")
+	}
+	regions := make([]config.Region, len(regionIDs))
+	for i, id := range regionIDs {
+		region, err := config.LoadRegionConfig(filepath.Join(*regionsDir, id+".yml"))
+		if err != nil {
+			return err
+		}
+		if region.Id != id {
+			return fmt.Errorf("serve: region id %q in config does not match %q", region.Id, id)
+		}
+		regions[i] = region
+	}
+	return serve.Run(serve.ServeOptions{Regions: regions, DataDir: *from, Addr: *addr, Github: *github})
 }
 
 func runBundle(args []string) error {

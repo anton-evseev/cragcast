@@ -6,7 +6,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User={{.User}}
-ExecStart={{.Bin}} serve --config {{.ConfigPath}}
+ExecStart={{.Bin}} serve{{range .Regions}} --region {{.}}{{end}} --regions-dir {{.RegionsDir}} --from {{.From}} --addr {{.Addr}}{{if .Github}} --github {{.Github}}{{end}}
 Restart=on-failure
 RestartSec=5
 NoNewPrivileges=true

@@ -31,9 +31,13 @@ type CronOptions struct {
 }
 
 type SystemdOptions struct {
-	ConfigPath string
 	Bin        string
 	User       string
+	Regions    []string
+	RegionsDir string
+	From       string
+	Addr       string
+	Github     string
 }
 
 func RunCron(o CronOptions) error {
