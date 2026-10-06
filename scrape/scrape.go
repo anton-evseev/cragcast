@@ -18,10 +18,9 @@ import (
 const forecastDays = 7
 
 type ScrapeOptions struct {
-	Regions   []config.Region
-	DataDir   string
-	UserAgent string
-	Github    string
+	Regions []config.Region
+	DataDir string
+	Github  string
 }
 
 // cragDay is one crag's day collapsed to a single verdict (the worse of its two
@@ -54,7 +53,7 @@ type scraper struct {
 // summary page plus a subpage per area under data/<region>/.
 func Run(o ScrapeOptions) error {
 	s := &scraper{
-		fc:      NewOpenMeteo(o.UserAgent),
+		fc:      NewOpenMeteo(),
 		th:      DefaultThresholds(),
 		dataDir: o.DataDir,
 		github:  o.Github,

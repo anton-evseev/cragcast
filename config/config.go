@@ -12,13 +12,12 @@ import (
 )
 
 type Config struct {
-	Bin       string   `yaml:"bin"`
-	Addr      string   `yaml:"addr"`
-	Data      string   `yaml:"data"`
-	User      string   `yaml:"user"`
-	UserAgent string   `yaml:"user_agent"` // sent to Open-Meteo when scraping
-	Github    string   `yaml:"github"`     // optional repo URL, linked in the footer
-	Regions   []string `yaml:"regions"`
+	Bin     string   `yaml:"bin"`
+	Addr    string   `yaml:"addr"`
+	Data    string   `yaml:"data"`
+	User    string   `yaml:"user"`
+	Github  string   `yaml:"github"` // optional repo URL, linked in the footer
+	Regions []string `yaml:"regions"`
 }
 
 type Region struct {
@@ -93,7 +92,6 @@ func (c Config) Validate() error {
 		{"data", c.Data},
 		{"addr", c.Addr},
 		{"user", c.User},
-		{"user_agent", c.UserAgent},
 	} {
 		if strings.TrimSpace(f.val) == "" {
 			missing = append(missing, f.name)

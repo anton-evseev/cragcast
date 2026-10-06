@@ -10,7 +10,6 @@ Set these variables in the environment of the scheduled task:
 
 - `IMAGE`: Docker image name and tag.
 - `WORK_DIR`: writable directory for each run's files.
-- `USER_AGENT`: user agent sent with weather requests.
 - `CLOUDFLARE_API_TOKEN`: Cloudflare API token.
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
 

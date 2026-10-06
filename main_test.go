@@ -17,7 +17,7 @@ func TestScrapeWithoutDeploymentConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := filepath.Join(root, "forecast")
-	if err := run([]string{"scrape", "--region", "seattle", "--regions-dir", regionsDir, "--out", out, "--user-agent", "test"}); err != nil {
+	if err := run([]string{"scrape", "--region", "seattle", "--regions-dir", regionsDir, "--out", out}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := os.Stat(filepath.Join(out, "seattle.html")); err != nil {

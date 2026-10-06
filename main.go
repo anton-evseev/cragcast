@@ -69,7 +69,7 @@ func run(args []string) error {
 		return gen.RunCron(gen.CronOptions{
 			Bin: cfg.Bin, User: cfg.User, Regions: regions,
 			RegionsDir: filepath.Join(configDir, "regions"), Out: dataDir,
-			UserAgent: cfg.UserAgent, Github: cfg.Github,
+			Github: cfg.Github,
 		})
 	case "gen-systemd":
 		return gen.RunSystemd(gen.SystemdOptions{ConfigPath: absConfig, Bin: cfg.Bin, User: cfg.User})
@@ -88,7 +88,6 @@ func runScrape(args []string) error {
 	regionID := fs.String("region", "", "region id")
 	regionsDir := fs.String("regions-dir", "regions", "directory containing regional YAML files")
 	out := fs.String("out", "", "directory for scraped HTML")
-	userAgent := fs.String("user-agent", "", "user agent for weather requests")
 	github := fs.String("github", "", "optional repository URL for page footers")
 	if err := fs.Parse(args); err != nil {
 		return err
@@ -99,8 +98,8 @@ func runScrape(args []string) error {
 	if *regionID == "" || strings.ContainsAny(*regionID, "/\\ \t") || *regionID == "." || *regionID == ".." {
 		return fmt.Errorf("scrape: invalid region %q", *regionID)
 	}
-	if *out == "" || strings.TrimSpace(*userAgent) == "" {
-		return fmt.Errorf("scrape: --out and --user-agent are required")
+	if *out == "" {
+		return fmt.Errorf("scrape: --out is required")
 	}
 	region, err := config.LoadRegionConfig(filepath.Join(*regionsDir, *regionID+".yml"))
 	if err != nil {
@@ -110,7 +109,7 @@ func runScrape(args []string) error {
 		return fmt.Errorf("scrape: region id %q in config does not match %q", region.Id, *regionID)
 	}
 	return scrape.Run(scrape.ScrapeOptions{
-		Regions: []config.Region{region}, DataDir: *out, UserAgent: *userAgent, Github: *github,
+		Regions: []config.Region{region}, DataDir: *out, Github: *github,
 	})
 }
 

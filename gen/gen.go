@@ -27,7 +27,6 @@ type CronOptions struct {
 	Regions    []config.Region
 	RegionsDir string
 	Out        string
-	UserAgent  string
 	Github     string
 }
 

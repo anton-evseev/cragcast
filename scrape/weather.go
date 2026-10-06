@@ -10,6 +10,8 @@ import (
 	"time"
 )
 
+const userAgent = "CragCast (https://github.com/anton-evseev/cragcast)"
+
 // Hour is one hourly observation/forecast point in the crag's local time.
 type Hour struct {
 	Time    time.Time
@@ -28,16 +30,14 @@ type Forecaster interface {
 
 // OpenMeteo is the real Forecaster, hitting api.open-meteo.com.
 type OpenMeteo struct {
-	Client    *http.Client
-	BaseURL   string // defaults to the public endpoint
-	UserAgent string // identifies this deployment to Open-Meteo
+	Client  *http.Client
+	BaseURL string // defaults to the public endpoint
 }
 
-func NewOpenMeteo(userAgent string) *OpenMeteo {
+func NewOpenMeteo() *OpenMeteo {
 	return &OpenMeteo{
-		Client:    &http.Client{Timeout: 20 * time.Second},
-		BaseURL:   "https://api.open-meteo.com/v1/forecast",
-		UserAgent: userAgent,
+		Client:  &http.Client{Timeout: 20 * time.Second},
+		BaseURL: "https://api.open-meteo.com/v1/forecast",
 	}
 }
 
@@ -73,7 +73,7 @@ func (o *OpenMeteo) Fetch(ctx context.Context, lat, lon float64, loc *time.Locat
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("User-Agent", o.UserAgent)
+	req.Header.Set("User-Agent", userAgent)
 
 	resp, err := o.Client.Do(req)
 	if err != nil {
