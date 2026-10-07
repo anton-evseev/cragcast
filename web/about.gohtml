@@ -86,48 +86,6 @@
             p {
                 margin: 0 0 14px;
             }
-            .lead {
-                color: var(--text);
-            }
-            .muted {
-                color: var(--muted);
-            }
-
-            /* FAQ — native details, no JS */
-            .faq details {
-                border-top: 1px solid var(--hair);
-            }
-            .faq details:last-of-type {
-                border-bottom: 1px solid var(--hair);
-            }
-            .faq summary {
-                cursor: pointer;
-                list-style: none;
-                padding: 13px 0;
-                font-weight: 550;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                gap: 14px;
-            }
-            .faq summary::-webkit-details-marker {
-                display: none;
-            }
-            .faq summary::after {
-                content: "+";
-                color: var(--muted);
-                font-weight: 400;
-                font-size: 18px;
-                line-height: 1;
-            }
-            .faq details[open] summary::after {
-                content: "\2212";
-            }
-            .faq details > p {
-                margin: -2px 0 16px;
-                color: var(--muted);
-            }
-
 
             :focus-visible {
                 outline: 2px solid var(--text);
@@ -147,87 +105,26 @@
                 </div>
             </header>
 
-            <p class="lead">
-                CragCast turns the forecast into a simple, at-a-glance verdict
-                for each crag within driving distance of Seattle. Instead of
-                making you read a wall of temperatures, wind speeds, and
-                precipitation numbers, it answers the only question that matters
-                on a climbing morning: where is the rock dry and worth the
-                drive? Each crag gets a color for each day &mdash; green to go,
-                yellow if it&rsquo;s marginal, red if it&rsquo;s wet.
+            <p>
+                CragCast checks the weather forecast for crags near Seattle and
+                rates climbing conditions with traffic light colors: green for
+                good, yellow for marginal, and red for poor conditions.
             </p>
 
-            <h2>FAQ</h2>
-            <div class="faq">
-                <details>
-                    <summary>How are the colors decided?</summary>
-                    <p>
-                        Green means dry rock and good conditions. Yellow means
-                        marginal &mdash; recent rain still drying out, too hot
-                        for decent friction, or borderline in some other way.
-                        Red means wet or unclimbable. The verdict weighs
-                        precipitation, how much rain fell recently and how long
-                        that rock takes to dry, temperature, wind, and whether
-                        the crag sits in sun or shade.
-                    </p>
-                </details>
-                <details>
-                    <summary>
-                        Why is a perfect-temperature day still red?
-                    </summary>
-                    <p>
-                        Wet rock trumps everything. If it rained recently and
-                        the rock hasn&rsquo;t dried &mdash; or the crag is one
-                        that seeps &mdash; it&rsquo;s red no matter how pleasant
-                        the air feels. Climbing on wet rock is dangerous and can
-                        break holds, so the forecast errs on the side of
-                        caution.
-                    </p>
-                </details>
-                <details>
-                    <summary>How often does it update?</summary>
-                    <p>
-                        Once early each morning, so any overnight rain is
-                        already factored in before you head out. The
-                        &ldquo;updated&rdquo; time at the top of the forecast
-                        tells you exactly how fresh the data is.
-                    </p>
-                </details>
-                <details>
-                    <summary>Where does the data come from?</summary>
-                    <p>
-                        The U.S. National Weather Service. CragCast reads the
-                        raw forecast and turns it into the per-crag verdicts you
-                        see.
-                    </p>
-                </details>
-                <details>
-                    <summary>My favorite crag isn&rsquo;t listed.</summary>
-                    <p>
-                        The crag list is small and hand-curated for now. If
-                        there&rsquo;s somewhere you&rsquo;d like to see added,
-                        get in touch &mdash; I&rsquo;m always happy to consider
-                        it.
-                    </p>
-                </details>
-            </div>
-
-            <h2>Support the crags</h2>
-            <p class="muted">
-                CragCast is free, and the best way to support it isn&rsquo;t to
-                pay me &mdash; it&rsquo;s to take care of the places it sends
-                you. Do trail work when you can. Brush the chalk and tick marks
-                off holds. Pack out your trash, and a little of someone
-                else&rsquo;s. Respect closures, raptor nesting seasons, and
-                access agreements. Healthy crags and good standing with
-                landowners are what make a tool like this worth having in the
-                first place.
+            <h2>How to support</h2>
+            <p>
+                CragCast is free. To support it, please take care of the crags
+                it covers: pack out any trash you find, don't top-rope
+                directly on fixed gear, and support local climbing
+                organizations. The weather data comes from
+                <a href="https://open-meteo.com/">Open-Meteo</a>; please support
+                them too.
             </p>
 
             <h2>Get in touch</h2>
-            <p class="muted">
-                Questions, corrections, or a crag to add? Email me at
-                <a href="mailto:you@example.com">you@example.com</a>.
+            <p>
+                Questions, corrections, or crag suggestions? Email
+                <a href="mailto:anton.evseev@proton.me">anton.evseev@proton.me</a>.
             </p>
 
             {{template "footer" .Footer}}
