@@ -2,7 +2,13 @@
 
 ## Publish static pages
 
-Install Docker and Wrangler on the machine running the script, and build the Docker image. Put `wrangler.jsonc` in the repository root with `assets.directory` set to `./dist`.
+Install Docker and build the image from the repository root:
+
+```sh
+docker build -t cragcast:local .
+```
+
+The image includes the Go program, Wrangler, and `wrangler.jsonc`. The machine running the script does not need Node or Wrangler installed.
 
 Create a Cloudflare API token with **Edit Cloudflare Workers** permission, scoped to the target account. Do not put the token in the repository.
 
@@ -15,4 +21,4 @@ Set these variables in the environment of the scheduled task:
 
 `REGION` is optional and defaults to `seattle`.
 
-Run `publish-cloudflare.sh` on a schedule. It scrapes the forecast, bundles the static pages, and deploys them with Wrangler. If a command fails, it stops before the next step.
+Run `publish-cloudflare.sh` on a schedule. It uses the image to scrape the forecast, bundle the static pages, and deploy them with Wrangler. If a command fails, it stops before the next step.
