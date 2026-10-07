@@ -10,7 +10,6 @@ import (
 
 	"github.com/anton-evseev/cragcast/bundle"
 	"github.com/anton-evseev/cragcast/config"
-	"github.com/anton-evseev/cragcast/gen"
 	"github.com/anton-evseev/cragcast/scrape"
 	"github.com/anton-evseev/cragcast/serve"
 )
@@ -23,63 +22,21 @@ func main() {
 }
 
 func run(args []string) error {
-	cmds := []string{"bundle", "gen-cron", "gen-systemd", "scrape", "serve"}
-	if len(args) == 0 || !slices.Contains(cmds, args[0]) {
+	cmds := []string{"bundle", "scrape", "serve"}
+	if len(args) == 0 {
 		return fmt.Errorf("usage: cragcast <%s> [flags]", strings.Join(cmds, "|"))
 	}
 	cmd, rest := args[0], args[1:]
-	if cmd == "bundle" {
-		return runBundle(rest)
-	}
-	if cmd == "scrape" {
-		return runScrape(rest)
-	}
-	if cmd == "serve" {
-		return runServe(rest)
-	}
-
-	fs := flag.NewFlagSet(cmd, flag.ContinueOnError)
-	configPath := fs.String("config", "", "path to config.yml")
-	if err := fs.Parse(rest); err != nil {
-		return err
-	}
-	if *configPath == "" {
-		return fmt.Errorf("%s: --config is required", cmd)
-	}
-
-	cfg, err := config.LoadConfig(*configPath)
-	if err != nil {
-		return err
-	}
-
-	// Anchor paths used by generated cron and systemd units to the config file's
-	// directory, since neither scheduler sets a working directory.
-	absConfig, err := filepath.Abs(*configPath)
-	if err != nil {
-		return err
-	}
-	configDir := filepath.Dir(absConfig)
-	dataDir := resolveDir(configDir, cfg.Data)
-
 	switch cmd {
-	case "gen-cron":
-		regions, err := loadRegions(configDir, cfg.Regions)
-		if err != nil {
-			return err
-		}
-		return gen.RunCron(gen.CronOptions{
-			Bin: cfg.Bin, User: cfg.User, Regions: regions,
-			RegionsDir: filepath.Join(configDir, "regions"), Out: dataDir,
-			Github: cfg.Github,
-		})
-	case "gen-systemd":
-		return gen.RunSystemd(gen.SystemdOptions{
-			Bin: cfg.Bin, User: cfg.User, Regions: cfg.Regions,
-			RegionsDir: filepath.Join(configDir, "regions"), From: dataDir,
-			Addr: cfg.Addr, Github: cfg.Github,
-		})
+	case "bundle":
+		return runBundle(rest)
+	case "scrape":
+		return runScrape(rest)
+	case "serve":
+		return runServe(rest)
+	default:
+		return fmt.Errorf("usage: cragcast <%s> [flags]", strings.Join(cmds, "|"))
 	}
-	return nil
 }
 
 func runScrape(args []string) error {
@@ -170,26 +127,4 @@ func runBundle(args []string) error {
 		return fmt.Errorf("bundle: --from and --out are required")
 	}
 	return bundle.Run(bundle.Options{Region: *regionId, From: *from, Out: *out})
-}
-
-func loadRegions(configDir string, regionIds []string) ([]config.Region, error) {
-	regions := make([]config.Region, len(regionIds))
-	for i, id := range regionIds {
-		path := filepath.Join(configDir, "regions", id+".yml")
-		r, err := config.LoadRegionConfig(path)
-		if err != nil {
-			return nil, err
-		}
-		regions[i] = r
-	}
-	return regions, nil
-}
-
-// resolveDir makes a config-relative path absolute by anchoring it to the
-// config file's directory; an already-absolute path is returned unchanged.
-func resolveDir(configDir, p string) string {
-	if filepath.IsAbs(p) {
-		return p
-	}
-	return filepath.Join(configDir, p)
 }

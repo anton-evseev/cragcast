@@ -1,7 +1,0 @@
-bin: /usr/local/bin/cragcast
-data: ./data
-addr: ":8090"
-user: cragcast
-github: https://github.com/anton-evseev/cragcast
-regions:
-  - seattle

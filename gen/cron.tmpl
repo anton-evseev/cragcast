@@ -1,5 +1,0 @@
-# Generated; do not edit
-{{range .Regions -}}
-CRON_TZ={{.Timezone}}
-{{.UpdateSchedule}} {{$.User}} {{$.Bin | quote}} scrape --region {{.Id | quote}} --regions-dir {{$.RegionsDir | quote}} --out {{$.Out | quote}} --github {{$.Github | quote}}
-{{end -}}

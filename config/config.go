@@ -11,21 +11,11 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type Config struct {
-	Bin     string   `yaml:"bin"`
-	Addr    string   `yaml:"addr"`
-	Data    string   `yaml:"data"`
-	User    string   `yaml:"user"`
-	Github  string   `yaml:"github"` // optional repo URL, linked in the footer
-	Regions []string `yaml:"regions"`
-}
-
 type Region struct {
-	Id             string `yaml:"id"`
-	Name           string `yaml:"name"`
-	Timezone       string `yaml:"timezone"`
-	UpdateSchedule string `yaml:"update_schedule"`
-	Areas          []Area `yaml:"areas"`
+	Id       string `yaml:"id"`
+	Name     string `yaml:"name"`
+	Timezone string `yaml:"timezone"`
+	Areas    []Area `yaml:"areas"`
 }
 
 type Area struct {
@@ -59,17 +49,6 @@ func decodeConfig(r io.Reader, c any) error {
 	return dec.Decode(c)
 }
 
-func LoadConfig(path string) (Config, error) {
-	var c Config
-	if err := loadConfig(path, &c); err != nil {
-		return Config{}, err
-	}
-	if err := c.Validate(); err != nil {
-		return Config{}, fmt.Errorf("config %q: %w", path, err)
-	}
-	return c, nil
-}
-
 func LoadRegionConfig(path string) (Region, error) {
 	var c Region
 	if err := loadConfig(path, &c); err != nil {
@@ -79,31 +58,6 @@ func LoadRegionConfig(path string) (Region, error) {
 		return Region{}, fmt.Errorf("config %q: %w", path, err)
 	}
 	return c, nil
-}
-
-// Validate checks the deployment config for fields used by the cron and
-// systemd generators.
-func (c Config) Validate() error {
-	var missing []string
-	for _, f := range []struct {
-		name, val string
-	}{
-		{"bin", c.Bin},
-		{"data", c.Data},
-		{"addr", c.Addr},
-		{"user", c.User},
-	} {
-		if strings.TrimSpace(f.val) == "" {
-			missing = append(missing, f.name)
-		}
-	}
-	if len(missing) > 0 {
-		return fmt.Errorf("missing required field(s): %s", strings.Join(missing, ", "))
-	}
-	if len(c.Regions) == 0 {
-		return errors.New("at least one region is required")
-	}
-	return nil
 }
 
 // Validate checks a region config for missing fields, an unparseable timezone,
@@ -121,9 +75,6 @@ func (r Region) Validate() error {
 	}
 	if _, err := time.LoadLocation(r.Timezone); err != nil {
 		return fmt.Errorf("region %q: invalid timezone %q: %w", r.Id, r.Timezone, err)
-	}
-	if strings.TrimSpace(r.UpdateSchedule) == "" {
-		return fmt.Errorf("region %q: update_schedule is required", r.Id)
 	}
 	if len(r.Areas) == 0 {
 		return fmt.Errorf("region %q: at least one area is required", r.Id)

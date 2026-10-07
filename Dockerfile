@@ -7,7 +7,6 @@ RUN go mod download
 COPY main.go ./
 COPY bundle ./bundle
 COPY config ./config
-COPY gen ./gen
 COPY scrape ./scrape
 COPY serve ./serve
 COPY web ./web
