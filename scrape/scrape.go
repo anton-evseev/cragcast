@@ -311,7 +311,7 @@ func areaIcon(av Verdict, cragIcons []string) []string {
 	if av == Green {
 		return []string{"i-check"}
 	}
-	var sun, rain, drop bool
+	var sun, rain, drop, wind bool
 	for _, ic := range cragIcons {
 		switch ic {
 		case "i-sun":
@@ -320,6 +320,8 @@ func areaIcon(av Verdict, cragIcons []string) []string {
 			rain = true
 		case "i-drop":
 			drop = true
+		case "i-wind":
+			wind = true
 		}
 	}
 	wet := "i-drop"
@@ -333,6 +335,10 @@ func areaIcon(av Verdict, cragIcons []string) []string {
 		return []string{"i-sun"}
 	case rain:
 		return []string{"i-rain"}
+	case drop:
+		return []string{"i-drop"}
+	case wind:
+		return []string{"i-wind"}
 	default:
 		return []string{"i-drop"}
 	}
@@ -344,9 +350,11 @@ func iconOf(r Result) string {
 		return "i-check"
 	case r.Reason == "hot" || r.Reason == "too hot":
 		return "i-sun" // heat is the culprit, whether Yellow or Red
+	case r.Reason == "windy":
+		return "i-wind"
 	case r.Verdict == Red:
 		return "i-rain"
-	default: // Yellow, non-heat — reason-bearing drop
+	default: // Other Yellow reasons use the drop
 		return "i-drop"
 	}
 }
