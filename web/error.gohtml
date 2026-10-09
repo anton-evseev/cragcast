@@ -79,6 +79,11 @@
                 color: var(--muted);
                 font-variant-numeric: tabular-nums;
             }
+            main {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+            }
             .message {
                 font-size: 16px;
                 margin: 14px 0 0;
@@ -101,10 +106,12 @@
             <a href="/">Crag<span>Cast</span></a>
         </div>
 
-        <div class="status">{{.Status}}</div>
-        <p class="message">{{.Message}}</p>
+        <main>
+            <div class="status">{{.Status}}</div>
+            <p class="message">{{.Message}}</p>
 
-        <a class="back" href="/">&larr; Back to forecast</a>
+            <a class="back" href="/">&larr; Back to forecast</a>
+        </main>
 
         {{template "footer" .Footer}}
     </body>

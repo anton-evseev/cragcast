@@ -37,33 +37,35 @@
                 </div>
             </header>
 
-            <div class="days" aria-hidden="true">
-                {{- range .Days}}
-                <div class="day"><b>{{.Label}}</b><small>{{.Date}}</small></div>
-                {{- end}}
-            </div>
-
-            <section class="area">
-                <h2>
-                    {{.AreaName}} <span class="drive">{{.Drive}} drive</span>
-                    <a class="more" href="/{{.RegionId}}">← all areas</a>
-                </h2>
-                {{range .Crags}}
-                <div class="crag">
-                    <div class="crag-head">
-                        <span class="crag-name">{{.Name}}</span>
-                        <span class="aspect"
-                            ><svg><use href="#{{.AspectIcon}}" /></svg>
-                            {{.Aspect}}</span
-                        >
-                    </div>
-                    <div class="forecast">
-                        {{- range .Cells}} {{template "cell" .}} {{- end}}
-                    </div>
-                    <div class="detail" hidden></div>
+            <main>
+                <div class="days" aria-hidden="true">
+                    {{- range .Days}}
+                    <div class="day"><b>{{.Label}}</b><small>{{.Date}}</small></div>
+                    {{- end}}
                 </div>
-                {{- end}}
-            </section>
+
+                <section class="area">
+                    <h2>
+                        {{.AreaName}} <span class="drive">{{.Drive}} drive</span>
+                        <a class="more" href="/{{.RegionId}}">← all areas</a>
+                    </h2>
+                    {{range .Crags}}
+                    <div class="crag">
+                        <div class="crag-head">
+                            <span class="crag-name">{{.Name}}</span>
+                            <span class="aspect"
+                                ><svg><use href="#{{.AspectIcon}}" /></svg>
+                                {{.Aspect}}</span
+                            >
+                        </div>
+                        <div class="forecast">
+                            {{- range .Cells}} {{template "cell" .}} {{- end}}
+                        </div>
+                        <div class="detail" hidden></div>
+                    </div>
+                    {{- end}}
+                </section>
+            </main>
 
             {{template "footer" .Footer}}
         </div>

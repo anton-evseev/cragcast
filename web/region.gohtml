@@ -493,31 +493,33 @@
                 </div>
             </header>
 
-            <div class="days" aria-hidden="true">
-                {{- range .Days}}
-                <div class="day"><b>{{.Label}}</b><small>{{.Date}}</small></div>
-                {{- end}}
-            </div>
-
-            {{range .Areas}}
-            <section class="area">
-                <h2>
-                    {{.Name}} <span class="drive">{{.Drive}} drive</span>
-                    <a class="more" href="/{{$.RegionId}}/{{.Id}}">crags →</a>
-                </h2>
-                <div class="forecast" data-area="{{.Id}}">
-                    {{- range .Cells}}
-                    <button type="button" class="cell {{.Class}}" data-day="{{.Day}}">
-                        <span class="icons"
-                            >{{range $i, $ic := .Icons}}{{if $i}}<span class="sep">/</span>{{end}}<svg><use href="#{{$ic}}" /></svg>{{end}}</span
-                        ><span class="temp">{{.Temp}}</span
-                        ><span class="sr-only">{{.Label}}</span>
-                    </button>
+            <main>
+                <div class="days" aria-hidden="true">
+                    {{- range .Days}}
+                    <div class="day"><b>{{.Label}}</b><small>{{.Date}}</small></div>
                     {{- end}}
                 </div>
-                <div class="detail" hidden></div>
-            </section>
-            {{end}}
+
+                {{range .Areas}}
+                <section class="area">
+                    <h2>
+                        {{.Name}} <span class="drive">{{.Drive}} drive</span>
+                        <a class="more" href="/{{$.RegionId}}/{{.Id}}">crags →</a>
+                    </h2>
+                    <div class="forecast" data-area="{{.Id}}">
+                        {{- range .Cells}}
+                        <button type="button" class="cell {{.Class}}" data-day="{{.Day}}">
+                            <span class="icons"
+                                >{{range $i, $ic := .Icons}}{{if $i}}<span class="sep">/</span>{{end}}<svg><use href="#{{$ic}}" /></svg>{{end}}</span
+                            ><span class="temp">{{.Temp}}</span
+                            ><span class="sr-only">{{.Label}}</span>
+                        </button>
+                        {{- end}}
+                    </div>
+                    <div class="detail" hidden></div>
+                </section>
+                {{end}}
+            </main>
 
             {{template "footer" .Footer}}
         </div>
