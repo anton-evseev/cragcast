@@ -9,6 +9,7 @@ import (
 	"embed"
 	"html/template"
 	"io"
+	"strings"
 )
 
 //go:embed *.gohtml
@@ -79,6 +80,29 @@ type AreaView struct {
 	AreaName string
 	Drive    string
 	Crags    []CragView
+}
+
+// Description summarizes the area using its configured crag names.
+func (v AreaView) Description() string {
+	names := make([]string, len(v.Crags))
+	for i, crag := range v.Crags {
+		names[i] = crag.Name
+	}
+	var crags string
+	switch len(names) {
+	case 0:
+		crags = v.AreaName
+	case 1:
+		crags = names[0]
+	case 2:
+		crags = strings.Join(names, " and ")
+	default:
+		crags = strings.Join(names[:len(names)-1], ", ") + ", and " + names[len(names)-1]
+	}
+	if crags != v.AreaName {
+		crags += " at " + v.AreaName
+	}
+	return "Climbing weather for " + crags + ". Rain, wind, and air quality forecasts."
 }
 
 type CragView struct {

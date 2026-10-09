@@ -6,31 +6,31 @@ areas:
     name: The Exits
     drive: 45 min
     crags:
-      - name: "Exit 32: Little Si"
+      - name: "Little Si"
         lat: 47.49829
         lon: -121.75561
         rock: rhyolite
         aspect: shade
         seepage: false
-      - name: "Exit 34: Middle Fork"
+      - name: "Middle Fork"
         lat: 47.53717
         lon: -121.58422
         rock: granite
         aspect: mixed
         seepage: false
-      - name: "Exit 38: Deception Crags"
+      - name: "Deception Crags"
         lat: 47.43567
         lon: -121.66045
         rock: conglomerate
         aspect: shade
         seepage: true
-      - name: "Exit 38: Mt. Washington"
+      - name: "Mt. Washington"
         lat: 47.44019
         lon: -121.67703
         rock: conglomerate
         aspect: PM sun
         seepage: false
-      - name: "Exit 38: Far Side"
+      - name: "Far Side"
         lat: 47.4313
         lon: -121.63232
         rock: conglomerate
