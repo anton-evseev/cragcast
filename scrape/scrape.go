@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/anton-evseev/cragcast/config"
@@ -28,15 +29,17 @@ type ScrapeOptions struct {
 // antecedent soak, plus peak dew point and wind. These are the same columns the
 // crag subpage shows per window, so the region crag list reads as one with it.
 type cragDay struct {
-	Verdict Verdict
-	Reason  string
-	Temp    string
-	Rain    string
-	Soak    string
-	Dew     string
-	Wind    string
-	HighF   float64 // numeric day-high, for averaging the area temperature
-	Valid   bool    // false when the day had no data
+	Verdict    Verdict
+	Reason     string
+	Temp       string
+	Rain       string
+	Soak       string
+	Dew        string
+	Highlights string
+	AQI        string
+	Wind       string
+	HighF      float64 // numeric day-high, for averaging the area temperature
+	Valid      bool    // false when the day had no data
 }
 
 // scraper holds the deployment-wide context for a run so it need not be threaded
@@ -88,6 +91,10 @@ func (s *scraper) region(r config.Region) error {
 	for _, a := range r.Areas {
 		total += len(a.Crags)
 	}
+	fetched, err := s.fetchRegion(ctx, r, loc)
+	if err != nil {
+		return err
+	}
 	scraped := 0
 
 	for _, area := range r.Areas {
@@ -101,10 +108,7 @@ func (s *scraper) region(r config.Region) error {
 		for _, c := range area.Crags {
 			scraped++
 			log.Printf("[%d/%d] Scraping data for %s/%s (%g, %g)...", scraped, total, area.Name, c.Name, c.Lat, c.Lon)
-			hours, err := s.fc.Fetch(ctx, c.Lat, c.Lon, loc)
-			if err != nil {
-				return fmt.Errorf("fetch %s: %w", c.Name, err)
-			}
+			hours := fetched[Coordinate{c.Lat, c.Lon}]
 			fc := Aggregate(hours, loc, now, forecastDays)
 			if dates == nil {
 				for _, d := range fc {
@@ -129,7 +133,7 @@ func (s *scraper) region(r config.Region) error {
 		dayEntries := make([]any, len(dates))
 		for i := range dates {
 			verdicts := make([]Verdict, len(perCrag))
-			conds := make([][8]string, len(perCrag))
+			conds := make([][10]string, len(perCrag))
 			cragIcons := make([]string, len(perCrag))
 			var highSum float64
 			var highN int
@@ -137,7 +141,7 @@ func (s *scraper) region(r config.Region) error {
 				cd := perCrag[c][i]
 				verdicts[c] = cd.Verdict
 				cragIcons[c] = iconOf(Result{Verdict: cd.Verdict, Reason: cd.Reason})
-				conds[c] = [8]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Rain, cd.Soak, cd.Dew, cd.Wind}
+				conds[c] = [10]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Rain, cd.Soak, cd.Dew, cd.Wind, cd.AQI, cd.Highlights}
 				if cd.Valid { // average only the crags that returned data
 					highSum += cd.HighF
 					highN++
@@ -200,14 +204,15 @@ func cells(days []DayForecast, p Profile, th Thresholds) []web.Cell {
 		pm := Score(d.PM, p, "PM", th)
 		cell := web.Cell{
 			Day:    dayLabel(d.Date, i),
-			AMData: windowData(d.AM, am),
-			PMData: windowData(d.PM, pm),
+			AMData: windowData(d.AM, am, metricGrades(d.AM, p, "AM", th)),
+			PMData: windowData(d.PM, pm, metricGrades(d.PM, p, "PM", th)),
 		}
 		if am.Verdict == pm.Verdict {
 			cell.Class = classOf(am.Verdict)
-			cell.Icon = iconOf(am)
+			limiting := worseResult(am, pm)
+			cell.Icon = iconOf(limiting)
 			cell.Temp = fmt.Sprintf("%.0f°", max(d.AM.TmaxF, d.PM.TmaxF))
-			cell.Label = fmt.Sprintf("%s, %s", d.Date.Format("Mon"), am.Reason)
+			cell.Label = fmt.Sprintf("%s, %s", d.Date.Format("Mon"), limiting.Reason)
 		} else {
 			cell.Split = true
 			cell.AM = web.Half{Class: classOf(am.Verdict), Icon: iconOf(am)}
@@ -226,17 +231,19 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 	for _, d := range days {
 		am := Score(d.AM, p, "AM", th)
 		pm := Score(d.PM, p, "PM", th)
-		worse, reason := am.Verdict, am.Reason
-		if pm.Verdict > am.Verdict {
-			worse, reason = pm.Verdict, pm.Reason
+		limiting := worseResult(am, pm)
+		grades := metricGrades(d.AM, p, "AM", th)
+		pmGrades := metricGrades(d.PM, p, "PM", th)
+		for i := range grades {
+			grades[i] = max(grades[i], pmGrades[i])
 		}
-		cd := cragDay{Verdict: worse, Reason: reason, Temp: "—", Rain: "—", Soak: "—", Dew: "—", Wind: "—"}
+		cd := cragDay{Highlights: highlightData(grades), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Rain: "—", Soak: "—", Dew: "—", Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
 		if d.AM.Valid || d.PM.Valid {
 			cd.Valid = true
 			cd.HighF = max(d.AM.TmaxF, d.PM.TmaxF)
 			cd.Temp = fmt.Sprintf("%.0f°", cd.HighF)
-			cd.Rain = fmt.Sprintf("%.2f″", d.AM.PrecipIn+d.PM.PrecipIn)
-			cd.Soak = fmt.Sprintf("%.2f″", d.AM.Antecedent)
+			cd.Rain = formatInches(d.AM.PrecipIn+d.PM.PrecipIn) + "″"
+			cd.Soak = formatInches(max(d.AM.Antecedent, d.PM.Antecedent)) + "″"
 			cd.Dew = fmt.Sprintf("%.0f°", max(d.AM.DewMaxF, d.PM.DewMaxF))
 			cd.Wind = fmt.Sprintf("%.0f mph", max(d.AM.WindMaxMph, d.PM.WindMaxMph))
 		}
@@ -246,16 +253,20 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 }
 
 // windowData packs one window into the compact attribute string the client
-// formats: "class,reason,temp,precip,soak,dew,wind". Numbers are pre-rounded
+// formats: "class,reason,temp,precip,soak,dew,wind,aqi,highlights". Numbers are pre-rounded
 // (the client only appends units); a no-data window carries empty stat fields.
 // Reasons never contain commas, so a plain comma join is unambiguous.
-func windowData(w Window, r Result) string {
+func windowData(w Window, r Result, grades [6]Verdict) string {
 	cls := classOf(r.Verdict)
 	if !w.Valid {
-		return cls + "," + r.Reason + ",,,,,"
+		return cls + "," + r.Reason + ",,,,,,,"
 	}
-	return fmt.Sprintf("%s,%s,%.0f,%.2f,%.2f,%.0f,%.0f",
-		cls, r.Reason, w.TmaxF, w.PrecipIn, w.Antecedent, w.DewMaxF, w.WindMaxMph)
+	aq := ""
+	if w.AQI != nil {
+		aq = fmt.Sprintf("%.0f", *w.AQI)
+	}
+	return fmt.Sprintf("%s,%s,%.0f,%s,%s,%.0f,%.0f,%s,%s",
+		cls, r.Reason, w.TmaxF, formatInches(w.PrecipIn), formatInches(w.Antecedent), w.DewMaxF, w.WindMaxMph, aq, highlightData(grades))
 }
 
 // dayLabel is the detail-panel header, e.g. "Today, Jun 18" or "Wed, Jun 18".
@@ -298,7 +309,7 @@ func verdictWord(v Verdict) string {
 	case Yellow:
 		return "marginal"
 	default:
-		return "wet"
+		return "poor"
 	}
 }
 
@@ -312,6 +323,11 @@ func areaIcon(av Verdict, cragIcons []string) []string {
 		return []string{"i-check"}
 	}
 	var sun, rain, drop, wind bool
+	for _, ic := range cragIcons {
+		if ic == "i-air" {
+			return []string{"i-air"}
+		}
+	}
 	for _, ic := range cragIcons {
 		switch ic {
 		case "i-sun":
@@ -350,7 +366,13 @@ func iconOf(r Result) string {
 		return "i-check"
 	case r.Reason == "hot" || r.Reason == "too hot":
 		return "i-sun" // heat is the culprit, whether Yellow or Red
-	case r.Reason == "windy":
+	case r.Reason == "air quality":
+		return "i-air"
+	case r.Reason == "light rain":
+		return "i-rain"
+	case r.Reason == "humid" || r.Reason == "very humid":
+		return "i-drop"
+	case r.Reason == "windy" || r.Reason == "too windy":
 		return "i-wind"
 	case r.Verdict == Red:
 		return "i-rain"
@@ -385,4 +407,58 @@ func atomicWrite(path string, data []byte) error {
 		return err
 	}
 	return os.Rename(tmp.Name(), path)
+}
+
+func formatAQI(a *float64) string {
+	if a == nil {
+		return "—"
+	}
+	return fmt.Sprintf("%.0f", *a)
+}
+
+// fetchRegion deduplicates exact coordinates and completes fetching before rendering.
+func (s *scraper) fetchRegion(ctx context.Context, r config.Region, loc *time.Location) (map[Coordinate][]Hour, error) {
+	points := []Coordinate{}
+	seen := map[Coordinate]bool{}
+	for _, a := range r.Areas {
+		for _, c := range a.Crags {
+			p := Coordinate{c.Lat, c.Lon}
+			if !seen[p] {
+				seen[p] = true
+				points = append(points, p)
+			}
+		}
+	}
+	out := make(map[Coordinate][]Hour, len(points))
+	for start := 0; start < len(points); start += batchSize {
+		batch := points[start:min(start+batchSize, len(points))]
+		log.Printf("Fetching weather and AQI for %d locations", len(batch))
+		rows, err := s.fc.FetchBatch(ctx, batch, loc)
+		if err != nil {
+			return nil, fmt.Errorf("fetch batch: %w", err)
+		}
+		if len(rows) != len(batch) {
+			return nil, fmt.Errorf("fetch batch returned %d locations, expected %d", len(rows), len(batch))
+		}
+		for i, p := range batch {
+			out[p] = rows[i]
+		}
+	}
+	return out, nil
+}
+
+func highlightData(grades [6]Verdict) string {
+	classes := make([]string, len(grades))
+	for i, grade := range grades {
+		classes[i] = classOf(grade)
+	}
+	return strings.Join(classes, "|")
+}
+
+// formatInches treats totals below 0.01 inch as zero and keeps two decimals.
+func formatInches(value float64) string {
+	if value < 0.01 {
+		return "0.00"
+	}
+	return fmt.Sprintf("%.2f", value)
 }

@@ -27,6 +27,7 @@ type Profile struct {
 // retuned without touching logic. These are v1 strawmen — calibrate against a
 // fixture table of known days.
 type Thresholds struct {
+	RainYellow   float64 // in-window rain at/above → Yellow
 	WetPrecip    float64 // in-window rain (in) that gates straight to Red
 	SeepDryout   float64 // antecedent (in) that makes a seeping crag Red
 	DryingFrac   float64 // fraction of dryout below which it's "still drying" (Yellow)
@@ -36,12 +37,17 @@ type Thresholds struct {
 	HotFloor     float64 // air temp (°F) below which a window never reads "hot"
 	ColdRed      float64 // at/below → Red
 	ColdYellow   float64 // → Yellow
+	DewRed       float64 // dew point at/above → Red
 	DewYellow    float64 // dew point at/above → Yellow (greasy friction)
+	AQIYellow    float64 // AQI above this value → Yellow
+	AQIRed       float64 // AQI above this value → Red
+	WindRed      float64 // wind at/above → Red
 	WindYellow   float64 // wind at/above → Yellow
 }
 
 func DefaultThresholds() Thresholds {
 	return Thresholds{
+		RainYellow:   0.01,
 		WetPrecip:    0.02,
 		SeepDryout:   0.10,
 		DryingFrac:   0.5,
@@ -52,59 +58,78 @@ func DefaultThresholds() Thresholds {
 		ColdRed:      28,
 		ColdYellow:   36,
 		DewYellow:    60,
+		DewRed:       70, // Very humid: weather.gov/tbw/dewpoint. Product threshold, not a safety limit.
 		WindYellow:   25,
+		WindRed:      35, // Within NWS advisory sustained-wind range: weather.gov/box/criteria.
+		AQIYellow:    50,
+		AQIRed:       100,
 	}
 }
 
 // Score is the heart of the app: pure function from aggregated window + crag
-// profile to a verdict. Two stages — a wetness gate that can veto to Red, then
-// a comfort score that decides Green vs Yellow.
+// profile to a verdict. Optional AQI can worsen the weather verdict.
 func Score(w Window, p Profile, win string, t Thresholds) Result {
 	if !w.Valid {
 		return Result{Yellow, "no data"}
 	}
+	grades := metricGrades(w, p, win, t)
+	result := Result{Green, "good"}
+	// Preserve weather reason priority while selecting the worst metric grade.
+	for _, severity := range []Verdict{Red, Yellow} {
+		for _, metric := range []int{1, 2, 0, 3, 4} {
+			if grades[metric] != severity {
+				continue
+			}
+			reason := ""
+			switch metric {
+			case 0:
+				reason = "cold"
+				if w.TmaxF >= t.HotFloor {
+					reason = "hot"
+				}
+				if severity == Red {
+					reason = "too " + reason
+				}
+			case 1:
+				reason = "light rain"
+				if severity == Red {
+					reason = "raining"
+				}
+			case 2:
+				reason = "drying"
+				if severity == Red {
+					reason = "wet rock"
+				}
+			case 3:
+				reason = "humid"
+				if severity == Red {
+					reason = "very humid"
+				}
+			case 4:
+				reason = "windy"
+				if severity == Red {
+					reason = "too windy"
+				}
+			}
+			result = Result{severity, reason}
+			break
+		}
+		if result.Verdict != Green {
+			break
+		}
+	}
+	if grades[5] != Green {
+		result = worseResult(result, Result{grades[5], "air quality"})
+	}
+	return result
+}
 
-	// --- Stage 1: wetness gate (limiting factor — beats any comfort) ---
-	if w.PrecipIn >= t.WetPrecip {
-		return Result{Red, "raining"}
+// worseResult prefers air quality when equally severe warnings compete.
+func worseResult(a, b Result) Result {
+	if b.Verdict > a.Verdict || (b.Verdict == a.Verdict && b.Reason == "air quality") {
+		return b
 	}
-	dryout := p.DryoutInches
-	if p.Seepage {
-		dryout = t.SeepDryout // seeping crags tolerate far less antecedent rain
-	}
-	if w.Antecedent >= dryout {
-		return Result{Red, "wet rock"}
-	}
-	stillDrying := w.Antecedent >= dryout*t.DryingFrac
-
-	// --- Stage 2: comfort (effective temperature + friction) ---
-	// Sun and wind act through temperature; fold sun into an effective temp.
-	gain := sunFactor(p.Aspect, win) * t.MaxSolarGain * (1 - w.CloudMean/100)
-	eff := w.TmaxF + gain
-	// Solar gain can only make an already-warm day feel hot — a cool day in
-	// the sun never reads "hot". Below HotFloor the heat checks don't apply.
-	hot := w.TmaxF >= t.HotFloor
-
-	switch {
-	case hot && eff >= t.HotRed:
-		return Result{Red, "too hot"}
-	case eff <= t.ColdRed:
-		return Result{Red, "too cold"}
-	}
-
-	switch {
-	case stillDrying:
-		return Result{Yellow, "drying"}
-	case hot && eff >= t.HotYellow:
-		return Result{Yellow, "hot"}
-	case eff <= t.ColdYellow:
-		return Result{Yellow, "cold"}
-	case w.DewMaxF >= t.DewYellow:
-		return Result{Yellow, "humid"}
-	case w.WindMaxMph >= t.WindYellow:
-		return Result{Yellow, "windy"}
-	}
-	return Result{Green, "good"}
+	return a
 }
 
 // AreaVerdict rolls the per-crag day verdicts of an area into one summary
@@ -174,4 +199,58 @@ func DryoutFor(rock string) float64 {
 		return 0.55
 	}
 	return 0.40
+}
+
+// metricGrades rates each detail metric independently, so a worse condition
+// does not hide other warnings. Order: temperature, rain, soak, dew, wind, AQI.
+func metricGrades(w Window, p Profile, win string, t Thresholds) [6]Verdict {
+	var grades [6]Verdict
+	if !w.Valid {
+		return grades
+	}
+	eff := w.TmaxF + sunFactor(p.Aspect, win)*t.MaxSolarGain*(1-w.CloudMean/100)
+	hot := w.TmaxF >= t.HotFloor
+	switch {
+	case hot && eff >= t.HotRed || eff <= t.ColdRed:
+		grades[0] = Red
+	case hot && eff >= t.HotYellow || eff <= t.ColdYellow:
+		grades[0] = Yellow
+	}
+	switch {
+	case w.PrecipIn >= t.WetPrecip:
+		grades[1] = Red
+	case w.PrecipIn >= t.RainYellow:
+		grades[1] = Yellow
+	}
+	dryout := p.DryoutInches
+	if p.Seepage {
+		dryout = t.SeepDryout
+	}
+	switch {
+	case w.Antecedent >= dryout:
+		grades[2] = Red
+	case w.Antecedent >= dryout*t.DryingFrac:
+		grades[2] = Yellow
+	}
+	switch {
+	case w.DewMaxF >= t.DewRed:
+		grades[3] = Red
+	case w.DewMaxF >= t.DewYellow:
+		grades[3] = Yellow
+	}
+	switch {
+	case w.WindMaxMph >= t.WindRed:
+		grades[4] = Red
+	case w.WindMaxMph >= t.WindYellow:
+		grades[4] = Yellow
+	}
+	if w.AQI != nil {
+		switch {
+		case *w.AQI > t.AQIRed:
+			grades[5] = Red
+		case *w.AQI > t.AQIYellow:
+			grades[5] = Yellow
+		}
+	}
+	return grades
 }

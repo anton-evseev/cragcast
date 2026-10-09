@@ -1,9 +1,11 @@
 package scrape
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
@@ -19,32 +21,34 @@ type Hour struct {
 	Precip  float64 // inches accumulated in the preceding hour
 	WindMph float64
 	DewF    float64
-	Cloud   float64 // cloud cover, percent 0–100
+	AQI     *float64 // nil when air quality is unavailable
+	Cloud   float64  // cloud cover, percent 0–100
 }
 
-// Forecaster fetches hourly weather for a coordinate. The interface exists so
-// tests can inject a fake returning canned data or a forced error.
+// Forecaster fetches weather and optional air quality for a batch of coordinates.
 type Forecaster interface {
-	Fetch(ctx context.Context, lat, lon float64, loc *time.Location) ([]Hour, error)
+	FetchBatch(ctx context.Context, points []Coordinate, loc *time.Location) ([][]Hour, error)
 }
 
-// OpenMeteo is the real Forecaster, hitting api.open-meteo.com.
+// OpenMeteo uses the separate weather and air quality endpoints.
 type OpenMeteo struct {
-	Client  *http.Client
-	BaseURL string // defaults to the public endpoint
+	Client        *http.Client
+	BaseURL       string // weather endpoint
+	AirQualityURL string
 }
 
 func NewOpenMeteo() *OpenMeteo {
 	return &OpenMeteo{
-		Client:  &http.Client{Timeout: 20 * time.Second},
-		BaseURL: "https://api.open-meteo.com/v1/forecast",
+		Client:        &http.Client{Timeout: 20 * time.Second},
+		BaseURL:       "https://api.open-meteo.com/v1/forecast",
+		AirQualityURL: "https://air-quality-api.open-meteo.com/v1/air-quality",
 	}
 }
 
 // raw mirrors the Open-Meteo JSON response (only the fields we request).
 type omResponse struct {
 	Hourly struct {
-		Time       []string  `json:"time"`
+		Time       []int64   `json:"time"`
 		Temp       []float64 `json:"temperature_2m"`
 		Precip     []float64 `json:"precipitation"`
 		Wind       []float64 `json:"wind_speed_10m"`
@@ -55,27 +59,108 @@ type omResponse struct {
 	Reason string `json:"reason"`
 }
 
-func (o *OpenMeteo) Fetch(ctx context.Context, lat, lon float64, loc *time.Location) ([]Hour, error) {
+// Coordinate identifies a requested location, independent of the returned grid cell.
+type Coordinate struct{ Lat, Lon float64 }
+
+const batchSize = 32
+
+// FetchBatch runs one weather request and one optional AQI request concurrently.
+// Results retain the order of points; batches are scheduled by the scraper.
+func (o *OpenMeteo) FetchBatch(ctx context.Context, points []Coordinate, loc *time.Location) ([][]Hour, error) {
+	if len(points) == 0 {
+		return nil, nil
+	}
+	if len(points) > batchSize {
+		return nil, fmt.Errorf("batch exceeds %d locations", batchSize)
+	}
 	q := url.Values{}
-	q.Set("latitude", fmt.Sprintf("%.4f", lat))
-	q.Set("longitude", fmt.Sprintf("%.4f", lon))
-	q.Set("hourly", strings.Join([]string{
-		"temperature_2m", "precipitation", "wind_speed_10m", "dew_point_2m", "cloud_cover",
-	}, ","))
+	var lats, lons []string
+	for _, p := range points {
+		lats = append(lats, fmt.Sprintf("%.4f", p.Lat))
+		lons = append(lons, fmt.Sprintf("%.4f", p.Lon))
+	}
+	q.Set("latitude", strings.Join(lats, ","))
+	q.Set("longitude", strings.Join(lons, ","))
+	q.Set("timezone", loc.String())
+	q.Set("timeformat", "unixtime")
+	q.Set("forecast_days", "7")
+	aq := url.Values{}
+	for key, values := range q {
+		aq[key] = append([]string(nil), values...)
+	}
+	aq.Set("hourly", "us_aqi")
+	q.Set("hourly", "temperature_2m,precipitation,wind_speed_10m,dew_point_2m,cloud_cover")
 	q.Set("temperature_unit", "fahrenheit")
 	q.Set("wind_speed_unit", "mph")
 	q.Set("precipitation_unit", "inch")
-	q.Set("timezone", loc.String()) // daily roll-up + "today" align to crag-local time
-	q.Set("past_days", "3")         // antecedent precip window
-	q.Set("forecast_days", "7")
+	q.Set("past_days", "3")
+	type airResult struct {
+		data []aqResponse
+		err  error
+	}
+	airDone := make(chan airResult, 1)
+	go func() {
+		data, err := requestBatch[aqResponse](ctx, o.Client, o.AirQualityURL, aq, len(points))
+		if err == nil {
+			for _, r := range data {
+				if r.Error {
+					err = fmt.Errorf("open-meteo error: %s", r.Reason)
+					break
+				}
+				if len(r.Hourly.Time) == 0 || len(r.Hourly.Time) != len(r.Hourly.AQI) {
+					err = fmt.Errorf("AQI arrays misaligned")
+					break
+				}
+			}
+		}
+		airDone <- airResult{data, err}
+	}()
+	raw, err := requestBatch[omResponse](ctx, o.Client, o.BaseURL, q, len(points))
+	air := <-airDone
+	if err != nil {
+		return nil, err
+	}
+	if air.err != nil {
+		log.Printf("Warning: AQI unavailable for batch: %v", air.err)
+	}
+	out := make([][]Hour, len(points))
+	for i, r := range raw {
+		if r.Error {
+			return nil, fmt.Errorf("open-meteo error: %s", r.Reason)
+		}
+		out[i], err = toHours(r, loc)
+		if err != nil {
+			return nil, fmt.Errorf("location %d: %w", i, err)
+		}
+		if air.err == nil {
+			byTime := make(map[int64]*float64)
+			for j, ts := range air.data[i].Hourly.Time {
+				byTime[ts] = air.data[i].Hourly.AQI[j]
+			}
+			for j := range out[i] {
+				out[i][j].AQI = byTime[out[i][j].Time.Unix()]
+			}
+		}
+	}
+	return out, nil
+}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.BaseURL+"?"+q.Encode(), nil)
+type aqResponse struct {
+	Hourly struct {
+		Time []int64    `json:"time"`
+		AQI  []*float64 `json:"us_aqi"`
+	} `json:"hourly"`
+	Error  bool   `json:"error"`
+	Reason string `json:"reason"`
+}
+
+func requestBatch[T any](ctx context.Context, client *http.Client, endpoint string, q url.Values, count int) ([]T, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+q.Encode(), nil)
 	if err != nil {
 		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("User-Agent", userAgent)
-
-	resp, err := o.Client.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("fetch: %w", err)
 	}
@@ -83,33 +168,40 @@ func (o *OpenMeteo) Fetch(ctx context.Context, lat, lon float64, loc *time.Locat
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("open-meteo status %d", resp.StatusCode)
 	}
-
-	var raw omResponse
-	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
+	var body json.RawMessage
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
 		return nil, fmt.Errorf("decode: %w", err)
 	}
-	if raw.Error {
-		return nil, fmt.Errorf("open-meteo error: %s", raw.Reason)
+	var rows []T
+	body = bytes.TrimSpace(body)
+	if len(body) > 0 && body[0] == '[' {
+		err = json.Unmarshal(body, &rows)
+	} else {
+		var row T
+		err = json.Unmarshal(body, &row)
+		rows = []T{row}
 	}
-	return toHours(raw, loc)
+	if err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	if len(rows) != count {
+		return nil, fmt.Errorf("open-meteo returned %d locations, expected %d", len(rows), count)
+	}
+	return rows, nil
 }
 
-// toHours zips the parallel arrays into []Hour, parsing local timestamps.
+// toHours zips the weather arrays into local hourly points.
 func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 	n := len(raw.Hourly.Time)
 	// Guard against ragged arrays so an index never panics.
-	if len(raw.Hourly.Temp) != n || len(raw.Hourly.Precip) != n ||
+	if n == 0 || len(raw.Hourly.Temp) != n || len(raw.Hourly.Precip) != n ||
 		len(raw.Hourly.Wind) != n || len(raw.Hourly.DewPoint) != n ||
 		len(raw.Hourly.CloudCover) != n {
 		return nil, fmt.Errorf("open-meteo arrays misaligned (time=%d)", n)
 	}
 	hours := make([]Hour, 0, n)
 	for i := 0; i < n; i++ {
-		// Open-Meteo emits local time without an offset, e.g. "2026-06-13T14:00".
-		t, err := time.ParseInLocation("2006-01-02T15:04", raw.Hourly.Time[i], loc)
-		if err != nil {
-			return nil, fmt.Errorf("parse time %q: %w", raw.Hourly.Time[i], err)
-		}
+		t := time.Unix(raw.Hourly.Time[i], 0).In(loc)
 		hours = append(hours, Hour{
 			Time:    t,
 			TempF:   raw.Hourly.Temp[i],

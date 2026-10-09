@@ -12,6 +12,7 @@ const (
 // Window is one day-half, aggregated. Each variable uses the operation that
 // preserves the signal the verdict cares about (max temp, summed precip, etc.).
 type Window struct {
+	AQI        *float64
 	Valid      bool
 	TmaxF      float64
 	DewMaxF    float64
@@ -44,11 +45,11 @@ func Aggregate(hours []Hour, loc *time.Location, now time.Time, days int) []DayF
 	return out
 }
 
-// window aggregates the hours falling in [date+startH, date+endH) and computes
+// window aggregates the hours between the local calendar boundaries and computes
 // the antecedent precip leading up to the window's start.
 func window(hours []Hour, date time.Time, startH, endH int) Window {
-	start := date.Add(time.Duration(startH) * time.Hour)
-	end := date.Add(time.Duration(endH) * time.Hour)
+	start := time.Date(date.Year(), date.Month(), date.Day(), startH, 0, 0, 0, date.Location())
+	end := time.Date(date.Year(), date.Month(), date.Day(), endH, 0, 0, 0, date.Location())
 
 	w := Window{Antecedent: precipSum(hours, start.Add(-antecedentHrs*time.Hour), start)}
 	var cloudSum float64
@@ -64,6 +65,7 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 		w.TmaxF = max(w.TmaxF, h.TempF)
 		w.DewMaxF = max(w.DewMaxF, h.DewF)
 		w.WindMaxMph = max(w.WindMaxMph, h.WindMph)
+		w.AQI = peakAQI(w.AQI, h.AQI)
 		w.PrecipIn += h.Precip
 		cloudSum += h.Cloud
 		count++
@@ -86,4 +88,15 @@ func precipSum(hours []Hour, from, to time.Time) float64 {
 		sum += h.Precip
 	}
 	return sum
+}
+
+// peakAQI preserves missing values and takes the maximum of available values.
+func peakAQI(a, b *float64) *float64 {
+	if a == nil {
+		return b
+	}
+	if b == nil || *a >= *b {
+		return a
+	}
+	return b
 }

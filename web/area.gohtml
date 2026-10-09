@@ -80,23 +80,24 @@
                     c.setAttribute("aria-expanded", "false");
                 });
 
-                // win = "class,reason,temp,precip,soak,dew,wind"; stats blank on
+                // win = "class,reason,temp,precip,soak,dew,wind,aqi,highlights"; stats blank on
                 // no data. Rendered as grid cells (label, reason, temp, rain,
-                // 72h, dew, wind) so AM and PM line up — the same columns the
+                // 72h, dew, wind, AQI) so AM and PM line up — the same columns the
                 // region page's crag list uses (see .crag-grid).
+                {{template "detail-metric"}}
+
                 function row(label, win) {
                     var p = win.split(",");
-                    function num(v, unit) {
-                        return (
-                            '<span class="cg-num">' +
-                            (p[2] ? v + unit : "—") + "</span>"
-                        );
-                    }
+                    var grades = (p[8] || "").split("|");
                     return (
                         '<span class="cg-name ' + p[0] + '">' + label +
                         '</span><span class="cg-reason">' + p[1] + "</span>" +
-                        num(p[2], "°") + num(p[3], "″") + num(p[4], "″") +
-                        num(p[5], "°") + num(p[6], " mph")
+                        metric(p[2], "°", grades[0]) +
+                        metric(p[3], "″", grades[1]) +
+                        metric(p[4], "″", grades[2]) +
+                        metric(p[5], "°", grades[3]) +
+                        metric(p[6], " mph", grades[4]) +
+                        metric(p[7], "", grades[5])
                     );
                 }
 
@@ -129,6 +130,7 @@
                         '<span class="cg-head">72h</span>' +
                         '<span class="cg-head">dew</span>' +
                         '<span class="cg-head">wind</span>' +
+                        '<span class="cg-head">AQI</span>' +
                         row("AM", cell.dataset.am) +
                         row("PM", cell.dataset.pm) +
                         "</div>";
