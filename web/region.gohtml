@@ -296,19 +296,29 @@
        temp, rain, 72h, dew, wind, AQI) so the two read as one. */
     .crag-grid {
         display: grid;
-        grid-template-columns: auto 1fr auto auto auto auto auto auto;
+        grid-template-columns: fit-content(10rem) minmax(0, 1fr) repeat(6, 3rem);
         min-width: 460px;
         align-items: baseline;
         gap: 3px 8px;
         margin-top: 4px;
     }
     .cg-head {
-        justify-self: end;
+        justify-self: center;
         font-size: 10px;
-        color: var(--muted);
+        font-weight: 700;
+        color: var(--text);
     }
     .cg-name {
         font-weight: 550;
+    }
+    .cg-name,
+    .cg-reason {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        text-align: left;
+    }
+    .cg-label {
+        display: contents;
     }
     .cg-name.go {
         color: var(--go-fg);
@@ -320,11 +330,13 @@
         color: var(--wet-fg);
     }
     .cg-reason {
+        justify-self: stretch;
+        text-align: left;
         color: var(--muted);
         font-size: 12px;
     }
     .cg-num {
-        justify-self: end;
+        justify-self: center;
         color: var(--muted);
         font-size: 12px;
         font-variant-numeric: tabular-nums;
@@ -340,8 +352,44 @@
         font-weight: 650;
     }
 
+    @media (max-width: 639px) {
+        .detail {
+            padding: 10px 12px;
+        }
+        .crag-grid {
+            min-width: 0;
+            grid-template-columns: repeat(6, minmax(0, 1fr));
+            column-gap: 4px;
+        }
+        .crag-grid > span:nth-child(-n + 2) {
+            display: none;
+        }
+        .cg-label {
+            display: flex;
+            grid-column: 1 / -1;
+            align-items: baseline;
+            flex-wrap: wrap;
+            gap: 0 8px;
+            margin-top: 6px;
+        }
+        .cg-name,
+        .cg-reason {
+            overflow-wrap: anywhere;
+            min-width: 0;
+        }
+        .cg-reason {
+            display: none;
+        }
+        .cg-num {
+            min-width: 0;
+        }
+    }
+
     /* desktop shows all 7 days */
     @media (min-width: 640px) {
+        .crag-grid {
+            column-gap: 12px;
+        }
         .app {
             max-width: 660px;
         }
@@ -493,9 +541,9 @@
                         .map(function (c) {
                             var grades = (c[9] || "").split("|");
                             return (
-                                '<span class="cg-name ' + c[1] + '">' + c[0] +
+                                '<span class="cg-label"><span class="cg-name ' + c[1] + '">' + c[0] +
                                 '</span><span class="cg-reason">' + c[2] +
-                                '</span>' +
+                                '</span></span>' +
                                 metric(c[3], "", grades[0]) +
                                 metric(c[4], "", grades[1]) +
                                 metric(c[5], "", grades[2]) +

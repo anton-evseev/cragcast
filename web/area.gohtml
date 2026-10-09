@@ -90,8 +90,8 @@
                     var p = win.split(",");
                     var grades = (p[8] || "").split("|");
                     return (
-                        '<span class="cg-name ' + p[0] + '">' + label +
-                        '</span><span class="cg-reason">' + p[1] + "</span>" +
+                        '<span class="cg-label"><span class="cg-name ' + p[0] + '">' + label +
+                        '</span><span class="cg-reason">' + p[1] + "</span></span>" +
                         metric(p[2], "°", grades[0]) +
                         metric(p[3], "″", grades[1]) +
                         metric(p[4], "″", grades[2]) +
