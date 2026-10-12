@@ -1,24 +1,35 @@
 # cragcast
 
-## Publish static pages
+## Build and publish the Docker image
 
-Install Docker and build the image from the repository root:
+Requires Git, Docker with Buildx, a builder that supports AMD64 and ARM64, and write access to the Docker Hub repository. From a repository checkout, run:
 
 ```sh
-docker build -t cragcast:local .
+docker login
+./publish-docker.sh
 ```
 
-The image includes the Go program, Wrangler, and `wrangler.jsonc`. The machine running the script does not need Node or Wrangler installed.
+The script publishes AMD64 and ARM64 images to `antonevseev/cragcast`, tagged `latest` and with the current Git commit ID. Set `IMAGE` to override the repository name, without a tag.
 
-Create a Cloudflare API token with **Edit Cloudflare Workers** permission, scoped to the target account. Do not put the token in the repository.
+## Publish static pages
+
+Install Docker and copy `publish-cloudflare.sh` to the machine running the scheduled task. The task's account needs access to Docker and a writable working directory. Building the image on that machine is not required.
+
+Create a Cloudflare API token with **Account → Workers Scripts → Edit** and **Account → Account Settings → Read**, scoped to your account. Do not put the token in the repository.
 
 Set these variables in the environment of the scheduled task:
 
-- `IMAGE`: Docker image name and tag.
+- `IMAGE`: Docker image name and tag, such as `antonevseev/cragcast:latest`.
 - `WORK_DIR`: writable directory for each run's files.
 - `CLOUDFLARE_API_TOKEN`: Cloudflare API token.
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
 
 `REGION` is optional and defaults to `seattle`.
 
-Run `publish-cloudflare.sh` on a schedule. It uses the image to scrape the forecast, bundle the static pages, and deploy them with Wrangler. If a command fails, it stops before the next step.
+Run the script on a schedule with these variables set:
+
+```sh
+sh /path/to/publish-cloudflare.sh
+```
+
+Each run pulls the image, scrapes the forecast, bundles the static pages, and deploys them with Wrangler. If a command fails, the script stops before the next step. With `latest`, new image releases are picked up automatically. Run directories remain under `WORK_DIR` and need occasional manual removal.
