@@ -16,13 +16,14 @@ const userAgent = "CragCast (https://github.com/anton-evseev/cragcast)"
 
 // Hour is one hourly observation/forecast point in the crag's local time.
 type Hour struct {
-	Time    time.Time
-	TempF   float64
-	Precip  float64 // inches accumulated in the preceding hour
-	WindMph float64
-	DewF    float64
-	AQI     *float64 // nil when air quality is unavailable
-	Cloud   float64  // cloud cover, percent 0–100
+	Time              time.Time
+	TempF             float64
+	Precip            float64  // inches accumulated in the preceding hour
+	PrecipProbability *float64 // nil when precipitation probability is unavailable
+	WindMph           float64
+	DewF              float64
+	AQI               *float64 // nil when air quality is unavailable
+	Cloud             float64  // cloud cover, percent 0–100
 }
 
 // Forecaster fetches weather and optional air quality for a batch of coordinates.
@@ -48,12 +49,13 @@ func NewOpenMeteo() *OpenMeteo {
 // raw mirrors the Open-Meteo JSON response (only the fields we request).
 type omResponse struct {
 	Hourly struct {
-		Time       []int64   `json:"time"`
-		Temp       []float64 `json:"temperature_2m"`
-		Precip     []float64 `json:"precipitation"`
-		Wind       []float64 `json:"wind_speed_10m"`
-		DewPoint   []float64 `json:"dew_point_2m"`
-		CloudCover []float64 `json:"cloud_cover"`
+		Time              []int64    `json:"time"`
+		Temp              []float64  `json:"temperature_2m"`
+		Precip            []float64  `json:"precipitation"`
+		PrecipProbability []*float64 `json:"precipitation_probability"`
+		Wind              []float64  `json:"wind_speed_10m"`
+		DewPoint          []float64  `json:"dew_point_2m"`
+		CloudCover        []float64  `json:"cloud_cover"`
 	} `json:"hourly"`
 	Error  bool   `json:"error"`
 	Reason string `json:"reason"`
@@ -89,7 +91,7 @@ func (o *OpenMeteo) FetchBatch(ctx context.Context, points []Coordinate, loc *ti
 		aq[key] = append([]string(nil), values...)
 	}
 	aq.Set("hourly", "us_aqi")
-	q.Set("hourly", "temperature_2m,precipitation,wind_speed_10m,dew_point_2m,cloud_cover")
+	q.Set("hourly", "temperature_2m,precipitation,precipitation_probability,wind_speed_10m,dew_point_2m,cloud_cover")
 	q.Set("temperature_unit", "fahrenheit")
 	q.Set("wind_speed_unit", "mph")
 	q.Set("precipitation_unit", "inch")
@@ -199,16 +201,27 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 		len(raw.Hourly.CloudCover) != n {
 		return nil, fmt.Errorf("open-meteo arrays misaligned (time=%d)", n)
 	}
+	if len(raw.Hourly.PrecipProbability) != 0 && len(raw.Hourly.PrecipProbability) != n {
+		return nil, fmt.Errorf("open-meteo probability array misaligned")
+	}
 	hours := make([]Hour, 0, n)
 	for i := 0; i < n; i++ {
+		var probability *float64
+		if len(raw.Hourly.PrecipProbability) != 0 {
+			probability = raw.Hourly.PrecipProbability[i]
+			if probability != nil && (*probability < 0 || *probability > 100) {
+				return nil, fmt.Errorf("open-meteo probability outside 0–100")
+			}
+		}
 		t := time.Unix(raw.Hourly.Time[i], 0).In(loc)
 		hours = append(hours, Hour{
-			Time:    t,
-			TempF:   raw.Hourly.Temp[i],
-			Precip:  raw.Hourly.Precip[i],
-			WindMph: raw.Hourly.Wind[i],
-			DewF:    raw.Hourly.DewPoint[i],
-			Cloud:   raw.Hourly.CloudCover[i],
+			Time:              t,
+			TempF:             raw.Hourly.Temp[i],
+			Precip:            raw.Hourly.Precip[i],
+			PrecipProbability: probability,
+			WindMph:           raw.Hourly.Wind[i],
+			DewF:              raw.Hourly.DewPoint[i],
+			Cloud:             raw.Hourly.CloudCover[i],
 		})
 	}
 	return hours, nil

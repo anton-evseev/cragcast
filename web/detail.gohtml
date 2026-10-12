@@ -1,8 +1,8 @@
 {{define "detail-metric" -}}
-function metric(value, unit, grade) {
+function metric(value, unit, grade, kind) {
     var present = value !== undefined && value !== "" && value !== "—";
     var highlight = present && (grade === "warn" || grade === "wet");
-    return '<span class="cg-num' + (highlight ? ' ' + grade : '') + '">' +
+    return '<span class="cg-num' + (kind ? ' ' + kind : '') + (highlight ? ' ' + grade : '') + '">' +
         (present ? value + unit : "—") + '</span>';
 }
 {{- end}}

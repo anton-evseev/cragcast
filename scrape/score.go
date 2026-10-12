@@ -1,5 +1,7 @@
 package scrape
 
+import "strings"
+
 // Verdict is the single per-window rating.
 type Verdict int
 
@@ -27,42 +29,48 @@ type Profile struct {
 // retuned without touching logic. These are v1 strawmen — calibrate against a
 // fixture table of known days.
 type Thresholds struct {
-	RainYellow   float64 // in-window rain at/above → Yellow
-	WetPrecip    float64 // in-window rain (in) that gates straight to Red
-	SeepDryout   float64 // antecedent (in) that makes a seeping crag Red
-	DryingFrac   float64 // fraction of dryout below which it's "still drying" (Yellow)
-	MaxSolarGain float64 // °F added to a fully-sunny, cloudless window
-	HotRed       float64 // effective temp at/above → Red
-	HotYellow    float64 // → Yellow
-	HotFloor     float64 // air temp (°F) below which a window never reads "hot"
-	ColdRed      float64 // at/below → Red
-	ColdYellow   float64 // → Yellow
-	DewRed       float64 // dew point at/above → Red
-	DewYellow    float64 // dew point at/above → Yellow (greasy friction)
-	AQIYellow    float64 // AQI above this value → Yellow
-	AQIRed       float64 // AQI above this value → Red
-	WindRed      float64 // wind at/above → Red
-	WindYellow   float64 // wind at/above → Yellow
+	RainYellow              float64 // in-window rain at/above → Yellow
+	WetPrecip               float64 // rain amount (in) needed for Red when likely or probability is unknown
+	RainPossibleProbability float64
+	RainLikelyProbability   float64
+	RainConflictAmount      float64 // low probability with this much rain still warns
+	SeepDryout              float64 // antecedent (in) that makes a seeping crag Red
+	DryingFrac              float64 // fraction of dryout below which it's "still drying" (Yellow)
+	MaxSolarGain            float64 // °F added to a fully-sunny, cloudless window
+	HotRed                  float64 // effective temp at/above → Red
+	HotYellow               float64 // → Yellow
+	HotFloor                float64 // air temp (°F) below which a window never reads "hot"
+	ColdRed                 float64 // at/below → Red
+	ColdYellow              float64 // → Yellow
+	DewRed                  float64 // dew point at/above → Red
+	DewYellow               float64 // dew point at/above → Yellow (greasy friction)
+	AQIYellow               float64 // AQI above this value → Yellow
+	AQIRed                  float64 // AQI above this value → Red
+	WindRed                 float64 // wind at/above → Red
+	WindYellow              float64 // wind at/above → Yellow
 }
 
 func DefaultThresholds() Thresholds {
 	return Thresholds{
-		RainYellow:   0.01,
-		WetPrecip:    0.02,
-		SeepDryout:   0.10,
-		DryingFrac:   0.5,
-		MaxSolarGain: 14,
-		HotRed:       95,
-		HotYellow:    80,
-		HotFloor:     70,
-		ColdRed:      28,
-		ColdYellow:   36,
-		DewYellow:    60,
-		DewRed:       70, // Very humid: weather.gov/tbw/dewpoint. Product threshold, not a safety limit.
-		WindYellow:   25,
-		WindRed:      35, // Within NWS advisory sustained-wind range: weather.gov/box/criteria.
-		AQIYellow:    50,
-		AQIRed:       100,
+		RainYellow:              0.01,
+		WetPrecip:               0.02,
+		RainPossibleProbability: 20,
+		RainLikelyProbability:   60,
+		RainConflictAmount:      0.10,
+		SeepDryout:              0.10,
+		DryingFrac:              0.5,
+		MaxSolarGain:            14,
+		HotRed:                  95,
+		HotYellow:               80,
+		HotFloor:                70,
+		ColdRed:                 28,
+		ColdYellow:              36,
+		DewYellow:               60,
+		DewRed:                  70, // Very humid: weather.gov/tbw/dewpoint. Product threshold, not a safety limit.
+		WindYellow:              25,
+		WindRed:                 35, // Within NWS advisory sustained-wind range: weather.gov/box/criteria.
+		AQIYellow:               50,
+		AQIRed:                  100,
 	}
 }
 
@@ -73,11 +81,16 @@ func Score(w Window, p Profile, win string, t Thresholds) Result {
 		return Result{Yellow, "no data"}
 	}
 	grades := metricGrades(w, p, win, t)
+	wetness := wetnessResult(w, grades)
 	result := Result{Green, "good"}
 	// Preserve weather reason priority while selecting the worst metric grade.
 	for _, severity := range []Verdict{Red, Yellow} {
-		for _, metric := range []int{1, 2, 0, 3, 4} {
-			if grades[metric] != severity {
+		for _, metric := range []int{1, 0, 3, 4} {
+			grade := grades[metric]
+			if metric == 1 {
+				grade = wetness.Verdict
+			}
+			if grade != severity {
 				continue
 			}
 			reason := ""
@@ -91,15 +104,7 @@ func Score(w Window, p Profile, win string, t Thresholds) Result {
 					reason = "too " + reason
 				}
 			case 1:
-				reason = "light rain"
-				if severity == Red {
-					reason = "raining"
-				}
-			case 2:
-				reason = "drying"
-				if severity == Red {
-					reason = "wet rock"
-				}
+				reason = wetness.Reason
 			case 3:
 				reason = "humid"
 				if severity == Red {
@@ -124,9 +129,13 @@ func Score(w Window, p Profile, win string, t Thresholds) Result {
 	return result
 }
 
-// worseResult prefers air quality when equally severe warnings compete.
+// worseResult prefers air quality on ties, then rain over drying.
 func worseResult(a, b Result) Result {
 	if b.Verdict > a.Verdict || (b.Verdict == a.Verdict && b.Reason == "air quality") {
+		return b
+	}
+	if b.Verdict == a.Verdict && strings.HasPrefix(b.Reason, "rain ") &&
+		(a.Reason == "drying" || a.Reason == "wet rock") {
 		return b
 	}
 	return a
@@ -216,12 +225,7 @@ func metricGrades(w Window, p Profile, win string, t Thresholds) [6]Verdict {
 	case hot && eff >= t.HotYellow || eff <= t.ColdYellow:
 		grades[0] = Yellow
 	}
-	switch {
-	case w.PrecipIn >= t.WetPrecip:
-		grades[1] = Red
-	case w.PrecipIn >= t.RainYellow:
-		grades[1] = Yellow
-	}
+	grades[1] = rainGrade(w, t)
 	dryout := p.DryoutInches
 	if p.Seepage {
 		dryout = t.SeepDryout
@@ -253,4 +257,61 @@ func metricGrades(w Window, p Profile, win string, t Thresholds) [6]Verdict {
 		}
 	}
 	return grades
+}
+
+func rainGrade(w Window, t Thresholds) Verdict {
+	if w.PrecipProbability == nil {
+		switch {
+		case w.PrecipIn >= t.WetPrecip:
+			return Red
+		case w.PrecipIn >= t.RainYellow:
+			return Yellow
+		default:
+			return Green
+		}
+	}
+	switch {
+	case *w.PrecipProbability < t.RainPossibleProbability:
+		if w.PrecipIn >= t.RainConflictAmount {
+			return Yellow
+		}
+		return Green
+	case *w.PrecipProbability >= t.RainLikelyProbability && w.PrecipIn >= t.WetPrecip:
+		return Red
+	default:
+		return Yellow
+	}
+}
+
+// wetnessResult selects rain on an equally severe rain/drying warning.
+func wetnessResult(w Window, grades [6]Verdict) Result {
+	if !w.Valid {
+		return Result{Yellow, "—"}
+	}
+	if grades[1] >= grades[2] && grades[1] != Green {
+		reason := "rain possible"
+		if grades[1] == Red {
+			reason = "rain likely"
+			if w.PrecipProbability == nil {
+				reason = "rain forecast"
+			}
+		}
+		return Result{grades[1], reason}
+	}
+	switch grades[2] {
+	case Red:
+		return Result{Red, "wet rock"}
+	case Yellow:
+		return Result{Yellow, "drying"}
+	default:
+		return Result{Green, "dry"}
+	}
+}
+
+func worseWetness(a, b Result) Result {
+	if b.Verdict > a.Verdict || b.Verdict == a.Verdict &&
+		strings.HasPrefix(b.Reason, "rain ") && !strings.HasPrefix(a.Reason, "rain ") {
+		return b
+	}
+	return a
 }

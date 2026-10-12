@@ -12,14 +12,15 @@ const (
 // Window is one day-half, aggregated. Each variable uses the operation that
 // preserves the signal the verdict cares about (max temp, summed precip, etc.).
 type Window struct {
-	AQI        *float64
-	Valid      bool
-	TmaxF      float64
-	DewMaxF    float64
-	WindMaxMph float64
-	PrecipIn   float64 // total rain in the window
-	CloudMean  float64 // drives the solar-gain term
-	Antecedent float64 // total rain in the prior 72h up to window start
+	AQI               *float64
+	Valid             bool
+	TmaxF             float64
+	DewMaxF           float64
+	WindMaxMph        float64
+	PrecipIn          float64  // total rain in the window
+	PrecipProbability *float64 // peak hourly chance, only with complete window coverage
+	CloudMean         float64  // drives the solar-gain term
+	Antecedent        float64  // total rain in the prior 72h up to window start
 }
 
 // DayForecast is one calendar day split into its two climbing windows.
@@ -54,7 +55,15 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 	w := Window{Antecedent: precipSum(hours, start.Add(-antecedentHrs*time.Hour), start)}
 	var cloudSum float64
 	var count int
+	probabilities := map[int64]float64{}
 	for _, h := range hours {
+		// Precipitation and probability describe the hour ending at Time.
+		if h.Time.After(start) && !h.Time.After(end) {
+			w.PrecipIn += h.Precip
+			if h.PrecipProbability != nil {
+				probabilities[h.Time.Unix()] = *h.PrecipProbability
+			}
+		}
 		if h.Time.Before(start) || !h.Time.Before(end) {
 			continue
 		}
@@ -66,23 +75,35 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 		w.DewMaxF = max(w.DewMaxF, h.DewF)
 		w.WindMaxMph = max(w.WindMaxMph, h.WindMph)
 		w.AQI = peakAQI(w.AQI, h.AQI)
-		w.PrecipIn += h.Precip
 		cloudSum += h.Cloud
 		count++
 	}
 	if count > 0 {
 		w.CloudMean = cloudSum / float64(count)
 	}
+	peak := 0.0
+	complete := true
+	for t := start.Add(time.Hour); !t.After(end); t = t.Add(time.Hour) {
+		p, ok := probabilities[t.Unix()]
+		if !ok {
+			complete = false
+			break
+		}
+		peak = max(peak, p)
+	}
+	if complete {
+		w.PrecipProbability = &peak
+	}
 	return w
 }
 
-// precipSum totals precipitation over [from, to). Because past_days and the
+// precipSum totals precipitation whose hour ends in (from, to]. Because past_days and the
 // forecast come back as one continuous array, today's lookback reaches into the
 // past portion of the same slice — no separate history store needed.
 func precipSum(hours []Hour, from, to time.Time) float64 {
 	var sum float64
 	for _, h := range hours {
-		if h.Time.Before(from) || !h.Time.Before(to) {
+		if !h.Time.After(from) || h.Time.After(to) {
 			continue
 		}
 		sum += h.Precip

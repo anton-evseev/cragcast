@@ -34,7 +34,7 @@ func TestAQIGrades(t *testing.T) {
 		}
 	}
 	w := Window{Valid: true, TmaxF: 65, PrecipIn: 1, AQI: value(75)}
-	if got := Score(w, p, "AM", DefaultThresholds()); got.Verdict != Red || got.Reason != "raining" {
+	if got := Score(w, p, "AM", DefaultThresholds()); got.Verdict != Red || got.Reason != "rain forecast" {
 		t.Fatal(got)
 	}
 	w.AQI = value(150)
@@ -237,7 +237,7 @@ func TestIndependentMetricWarnings(t *testing.T) {
 	p := Profile{Aspect: "shade", DryoutInches: 0.4}
 	th := DefaultThresholds()
 	r := Score(w, p, "AM", th)
-	if r.Verdict != Red || r.Reason != "raining" {
+	if r.Verdict != Red || r.Reason != "rain forecast" {
 		t.Fatal(r)
 	}
 	grades := metricGrades(w, p, "AM", th)
@@ -245,12 +245,12 @@ func TestIndependentMetricWarnings(t *testing.T) {
 		t.Fatal(grades)
 	}
 	data := strings.Split(windowData(w, r, grades), ",")
-	if len(data) != 9 || data[8] != "go|wet|go|go|go|warn" {
+	if len(data) != 8 || data[7] != "go|wet|go|go|warn" {
 		t.Fatal(data)
 	}
 	day := DayForecast{AM: w, PM: Window{Valid: true, TmaxF: 65, WindMaxMph: 30}}
 	cd := cragDays([]DayForecast{day}, p, th)[0]
-	if cd.Highlights != "go|wet|go|go|warn|warn" {
+	if cd.Highlights != "go|wet|go|warn|warn" {
 		t.Fatal(cd.Highlights)
 	}
 	w.AQI = nil
@@ -264,10 +264,9 @@ func TestIndependentMetricWarnings(t *testing.T) {
 }
 
 func TestDailySoakMatchesHighlight(t *testing.T) {
-	// Rain during AM enters PM's 72-hour history. The daily summary must
-	// show that nonzero PM total rather than highlight AM's zero.
+	// The daily wetness status must retain PM's drying warning.
 	day := DayForecast{
-		AM: Window{Valid: true, TmaxF: 65, PrecipIn: 0.29},
+		AM: Window{Valid: true, TmaxF: 65},
 		PM: Window{Valid: true, TmaxF: 65, Antecedent: 0.29},
 	}
 	for _, tc := range []struct {
@@ -276,8 +275,10 @@ func TestDailySoakMatchesHighlight(t *testing.T) {
 	}{{0.4, "warn"}, {0.2, "wet"}} {
 		p := Profile{Aspect: "shade", DryoutInches: tc.dryout}
 		cd := cragDays([]DayForecast{day}, p, DefaultThresholds())[0]
-		if cd.Soak != "0.29″" || strings.Split(cd.Highlights, "|")[2] != tc.class {
-			t.Fatalf("soak=%s highlights=%s", cd.Soak, cd.Highlights)
+		if strings.Split(cd.Highlights, "|")[1] != tc.class ||
+			(tc.class == "warn" && cd.Wetness != "drying") ||
+			(tc.class == "wet" && cd.Wetness != "wet rock") {
+			t.Fatalf("wetness=%s highlights=%s", cd.Wetness, cd.Highlights)
 		}
 	}
 }
@@ -295,10 +296,10 @@ func TestMetricBands(t *testing.T) {
 		{"dry", Window{Valid: true, TmaxF: 65}, Green, 1, "good"},
 		{"trace rain", Window{Valid: true, TmaxF: 65, PrecipIn: 0.004}, Green, 1, "good"},
 		{"below yellow rain", Window{Valid: true, TmaxF: 65, PrecipIn: 0.0099}, Green, 1, "good"},
-		{"yellow rain boundary", Window{Valid: true, TmaxF: 65, PrecipIn: 0.01}, Yellow, 1, "light rain"},
-		{"Icicle Creek rain", Window{Valid: true, TmaxF: 65, PrecipIn: 0.016}, Yellow, 1, "light rain"},
-		{"rain boundary", Window{Valid: true, TmaxF: 65, PrecipIn: 0.02}, Red, 1, "raining"},
-		{"Tumwater rain", Window{Valid: true, TmaxF: 65, PrecipIn: 0.032}, Red, 1, "raining"},
+		{"yellow rain boundary", Window{Valid: true, TmaxF: 65, PrecipIn: 0.01}, Yellow, 1, "rain possible"},
+		{"Icicle Creek rain", Window{Valid: true, TmaxF: 65, PrecipIn: 0.016}, Yellow, 1, "rain possible"},
+		{"rain boundary", Window{Valid: true, TmaxF: 65, PrecipIn: 0.02}, Red, 1, "rain forecast"},
+		{"Tumwater rain", Window{Valid: true, TmaxF: 65, PrecipIn: 0.032}, Red, 1, "rain forecast"},
 		{"wind green", Window{Valid: true, TmaxF: 65, WindMaxMph: 24.9}, Green, 4, "good"},
 		{"wind yellow", Window{Valid: true, TmaxF: 65, WindMaxMph: 25}, Yellow, 4, "windy"},
 		{"wind below red", Window{Valid: true, TmaxF: 65, WindMaxMph: 34.9}, Yellow, 4, "windy"},
@@ -326,17 +327,11 @@ func TestMetricBands(t *testing.T) {
 			if grades[tc.metric] != tc.grade {
 				t.Fatal(grades)
 			}
-			if strings.Split(highlightData(grades), "|")[tc.metric] != classOf(tc.grade) {
-				t.Fatal("wrong detail color")
-			}
 		})
-	}
-	if formatInches(0) != "0.00" || formatInches(0.004) != "0.00" || formatInches(0.0099) != "0.00" || formatInches(0.016) != "0.02" {
-		t.Fatal("rain formatting")
 	}
 	w := Window{Valid: true, TmaxF: 65, PrecipIn: 0.004}
 	data := windowData(w, Score(w, p, "AM", th), metricGrades(w, p, "AM", th))
-	if strings.Split(data, ",")[3] != "0.00" {
+	if strings.Split(data, ",")[3] != "dry" {
 		t.Fatal(data)
 	}
 	// A red metric must beat an earlier yellow condition.

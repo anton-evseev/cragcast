@@ -25,15 +25,13 @@ type ScrapeOptions struct {
 }
 
 // cragDay is one crag's day collapsed to a single verdict (the worse of its two
-// windows) with the numbers that explain it — day-high, in-window rain, 72h
-// antecedent soak, plus peak dew point and wind. These are the same columns the
+// windows) with its wetness status, day-high, peak dew point, wind, and AQI. These are the same columns the
 // crag subpage shows per window, so the region crag list reads as one with it.
 type cragDay struct {
 	Verdict    Verdict
 	Reason     string
 	Temp       string
-	Rain       string
-	Soak       string
+	Wetness    string
 	Dew        string
 	Highlights string
 	AQI        string
@@ -133,7 +131,7 @@ func (s *scraper) region(r config.Region) error {
 		dayEntries := make([]any, len(dates))
 		for i := range dates {
 			verdicts := make([]Verdict, len(perCrag))
-			conds := make([][10]string, len(perCrag))
+			conds := make([][9]string, len(perCrag))
 			cragIcons := make([]string, len(perCrag))
 			var highSum float64
 			var highN int
@@ -141,7 +139,7 @@ func (s *scraper) region(r config.Region) error {
 				cd := perCrag[c][i]
 				verdicts[c] = cd.Verdict
 				cragIcons[c] = iconOf(Result{Verdict: cd.Verdict, Reason: cd.Reason})
-				conds[c] = [10]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Rain, cd.Soak, cd.Dew, cd.Wind, cd.AQI, cd.Highlights}
+				conds[c] = [9]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Wetness, cd.Dew, cd.Wind, cd.AQI, cd.Highlights}
 				if cd.Valid { // average only the crags that returned data
 					highSum += cd.HighF
 					highN++
@@ -234,16 +232,15 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 		limiting := worseResult(am, pm)
 		grades := metricGrades(d.AM, p, "AM", th)
 		pmGrades := metricGrades(d.PM, p, "PM", th)
+		wetness := worseWetness(wetnessResult(d.AM, grades), wetnessResult(d.PM, pmGrades))
 		for i := range grades {
 			grades[i] = max(grades[i], pmGrades[i])
 		}
-		cd := cragDay{Highlights: highlightData(grades), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Rain: "—", Soak: "—", Dew: "—", Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
+		cd := cragDay{Highlights: detailHighlights(grades, wetness), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Wetness: wetness.Reason, Dew: "—", Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
 		if d.AM.Valid || d.PM.Valid {
 			cd.Valid = true
 			cd.HighF = max(d.AM.TmaxF, d.PM.TmaxF)
 			cd.Temp = fmt.Sprintf("%.0f°", cd.HighF)
-			cd.Rain = formatInches(d.AM.PrecipIn+d.PM.PrecipIn) + "″"
-			cd.Soak = formatInches(max(d.AM.Antecedent, d.PM.Antecedent)) + "″"
 			cd.Dew = fmt.Sprintf("%.0f°", max(d.AM.DewMaxF, d.PM.DewMaxF))
 			cd.Wind = fmt.Sprintf("%.0f mph", max(d.AM.WindMaxMph, d.PM.WindMaxMph))
 		}
@@ -253,20 +250,26 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 }
 
 // windowData packs one window into the compact attribute string the client
-// formats: "class,reason,temp,precip,soak,dew,wind,aqi,highlights". Numbers are pre-rounded
+// formats: "class,reason,temp,wetness,dew,wind,aqi,highlights". Numbers are pre-rounded
 // (the client only appends units); a no-data window carries empty stat fields.
 // Reasons never contain commas, so a plain comma join is unambiguous.
 func windowData(w Window, r Result, grades [6]Verdict) string {
 	cls := classOf(r.Verdict)
 	if !w.Valid {
-		return cls + "," + r.Reason + ",,,,,,,"
+		return cls + "," + r.Reason + ",,,,,,"
 	}
 	aq := ""
 	if w.AQI != nil {
 		aq = fmt.Sprintf("%.0f", *w.AQI)
 	}
-	return fmt.Sprintf("%s,%s,%.0f,%s,%s,%.0f,%.0f,%s,%s",
-		cls, r.Reason, w.TmaxF, formatInches(w.PrecipIn), formatInches(w.Antecedent), w.DewMaxF, w.WindMaxMph, aq, highlightData(grades))
+	wetness := wetnessResult(w, grades)
+	return fmt.Sprintf("%s,%s,%.0f,%s,%.0f,%.0f,%s,%s",
+		cls, r.Reason, w.TmaxF, wetness.Reason, w.DewMaxF, w.WindMaxMph, aq, detailHighlights(grades, wetness))
+}
+
+func detailHighlights(grades [6]Verdict, wetness Result) string {
+	return strings.Join([]string{classOf(grades[0]), classOf(wetness.Verdict),
+		classOf(grades[3]), classOf(grades[4]), classOf(grades[5])}, "|")
 }
 
 // dayLabel is the detail-panel header, e.g. "Today, Jun 18" or "Wed, Jun 18".
@@ -368,7 +371,7 @@ func iconOf(r Result) string {
 		return "i-sun" // heat is the culprit, whether Yellow or Red
 	case r.Reason == "air quality":
 		return "i-air"
-	case r.Reason == "light rain":
+	case strings.HasPrefix(r.Reason, "rain "):
 		return "i-rain"
 	case r.Reason == "humid" || r.Reason == "very humid":
 		return "i-drop"
@@ -445,20 +448,4 @@ func (s *scraper) fetchRegion(ctx context.Context, r config.Region, loc *time.Lo
 		}
 	}
 	return out, nil
-}
-
-func highlightData(grades [6]Verdict) string {
-	classes := make([]string, len(grades))
-	for i, grade := range grades {
-		classes[i] = classOf(grade)
-	}
-	return strings.Join(classes, "|")
-}
-
-// formatInches treats totals below 0.01 inch as zero and keeps two decimals.
-func formatInches(value float64) string {
-	if value < 0.01 {
-		return "0.00"
-	}
-	return fmt.Sprintf("%.2f", value)
 }
