@@ -11,13 +11,13 @@ mkdir -p "$WORK_DIR"
 run_dir=$(mktemp -d "$WORK_DIR/run.XXXXXX")
 printf 'Run directory: %s\n' "$run_dir"
 
-docker run --rm --user "$(id -u):$(id -g)" -v "$run_dir:/work" \
+docker run --rm -v "$run_dir:/work" \
     "$IMAGE" scrape --region "$REGION" --out /work/forecast
 
-docker run --rm --user "$(id -u):$(id -g)" -v "$run_dir:/work" \
+docker run --rm -v "$run_dir:/work" \
     "$IMAGE" bundle --region "$REGION" --from /work/forecast --out /work/dist
 
-docker run --rm --user "$(id -u):$(id -g)" \
+docker run --rm \
     --entrypoint wrangler --workdir /work \
     -e HOME=/tmp -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID \
     -v "$run_dir:/work" -v "$run_dir/dist:/app/dist:ro" \
