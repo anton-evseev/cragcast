@@ -293,11 +293,11 @@
     }
     /* Shared day-detail grid: the per-crag list on the region page and the
        AM/PM detail on the crag subpage use the same columns (label,
-       temp, wetness, dew, wind, AQI) so the two read as one. */
+       temp, wetness, wind, AQI) so the two read as one. */
     .crag-grid {
         display: grid;
-        grid-template-columns: minmax(0, 1fr) 3rem 6.75rem repeat(3, 3rem);
-        min-width: 460px;
+        grid-template-columns: minmax(0, 1fr) 3rem 6.75rem repeat(2, 3rem);
+        min-width: 404px;
         align-items: baseline;
         gap: 3px 8px;
         margin-top: 4px;
@@ -353,7 +353,7 @@
         }
         .crag-grid {
             min-width: 0;
-            grid-template-columns: repeat(6, minmax(0, 1fr));
+            grid-template-columns: repeat(5, minmax(0, 1fr));
             column-gap: 4px;
         }
         .crag-grid > span:first-child {
@@ -514,7 +514,7 @@
         <script>
             // Tap an area's day cell to reveal that day's crag-by-crag list.
             // CRAGS[areaId][dayIndex] =
-            //   [dayLabel, [[name, class, reason, temp, wetness, dew, wind, aqi, highlights], ...]]
+            //   [dayLabel, [[name, class, reason, temp, wetness, wind, aqi, highlights], ...]]
             // (positional to keep the page small — see cragsData in scrape.go).
             var CRAGS = {{.CragsJSON}};
             (function () {
@@ -527,21 +527,20 @@
 
                 // Lay the crags out as a grid so the columns line up down the
                 // card — the same columns the crag subpage shows per window.
-                // c = [name, class, reason, temp, wetness, dew, wind, aqi, highlights].
+                // c = [name, class, reason, temp, wetness, wind, aqi, highlights].
                 {{template "detail-metric"}}
 
                 function crags(day) {
                     var rows = day[1]
                         .map(function (c) {
-                            var grades = (c[8] || "").split("|");
+                            var grades = (c[7] || "").split("|");
                             return (
                                 '<span class="cg-name ' + c[1] + '">' + c[0] +
                                 '</span>' +
                                 metric(c[3], "", grades[0]) +
                                 metric(c[4], "", grades[1], "cg-wetness") +
                                 metric(c[5], "", grades[2]) +
-                                metric(c[6], "", grades[3]) +
-                                metric(c[7], "", grades[4])
+                                metric(c[6], "", grades[3])
                             );
                         })
                         .join("");
@@ -549,7 +548,6 @@
                         '<div class="crag-grid"><span></span>' +
                         '<span class="cg-head">temp</span>' +
                         '<span class="cg-head cg-wetness">wetness</span>' +
-                        '<span class="cg-head">dew</span>' +
                         '<span class="cg-head">wind</span>' +
                         '<span class="cg-head">AQI</span>' + rows + "</div>"
                     );

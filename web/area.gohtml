@@ -83,23 +83,22 @@
                     c.setAttribute("aria-expanded", "false");
                 });
 
-                // win = "class,reason,temp,wetness,dew,wind,aqi,highlights"; stats blank on
+                // win = "class,reason,temp,wetness,wind,aqi,highlights"; stats blank on
                 // no data. Rendered as grid cells (label, temp, wetness,
-                // dew, wind, AQI) so AM and PM line up — the same columns the
+                // wind, AQI) so AM and PM line up — the same columns the
                 // region page's crag list uses (see .crag-grid).
                 {{template "detail-metric"}}
 
                 function row(label, win) {
                     var p = win.split(",");
-                    var grades = (p[7] || "").split("|");
+                    var grades = (p[6] || "").split("|");
                     return (
                         '<span class="cg-name ' + p[0] + '">' + label +
                         '</span>' +
                         metric(p[2], "°", grades[0]) +
                         metric(p[3], "", grades[1], "cg-wetness") +
-                        metric(p[4], "°", grades[2]) +
-                        metric(p[5], " mph", grades[3]) +
-                        metric(p[6], "", grades[4])
+                        metric(p[4], " mph", grades[2]) +
+                        metric(p[5], "", grades[3])
                     );
                 }
 
@@ -129,7 +128,6 @@
                         '<div class="crag-grid"><span></span>' +
                         '<span class="cg-head">temp</span>' +
                         '<span class="cg-head cg-wetness">wetness</span>' +
-                        '<span class="cg-head">dew</span>' +
                         '<span class="cg-head">wind</span>' +
                         '<span class="cg-head">AQI</span>' +
                         row("AM", cell.dataset.am) +

@@ -47,10 +47,85 @@ func TestProbabilityRainGrades(t *testing.T) {
 				t.Fatal("rain warning has wrong icon")
 			}
 			fields := strings.Split(windowData(w, score, grades), ",")
-			if len(fields) != 8 || fields[3] != tc.status || strings.Split(fields[7], "|")[1] != classOf(tc.grade) {
+			if len(fields) != 7 || fields[3] != tc.status || strings.Split(fields[6], "|")[1] != classOf(tc.grade) {
 				t.Fatal(fields)
 			}
 		})
+	}
+}
+
+func TestHumidityWetness(t *testing.T) {
+	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	th := DefaultThresholds()
+	for _, tc := range []struct {
+		dew  float64
+		want Result
+	}{
+		{59.9, Result{Green, "dry"}},
+		{60, Result{Yellow, "humid"}},
+		{69.9, Result{Yellow, "humid"}},
+		{70, Result{Red, "very humid"}},
+	} {
+		w := Window{Valid: true, TmaxF: 75, DewMaxF: tc.dew}
+		grades := metricGrades(w, p, "AM", th)
+		if got := wetnessResult(w, grades); got != tc.want {
+			t.Fatalf("dew=%v: got %+v, want %+v", tc.dew, got, tc.want)
+		}
+		fields := strings.Split(windowData(w, Score(w, p, "AM", th), grades), ",")
+		if len(fields) != 7 || fields[3] != tc.want.Reason || fields[6] != "go|"+classOf(tc.want.Verdict)+"|go|go" {
+			t.Fatal(fields)
+		}
+	}
+	w := Window{Valid: true, TmaxF: 75, DewMaxF: 70, PrecipIn: 0.01, Antecedent: 0.2}
+	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got != (Result{Red, "very humid"}) {
+		t.Fatal(got)
+	}
+	w.DewMaxF = 60
+	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "rain possible" {
+		t.Fatal(got)
+	}
+	w.PrecipIn = 0
+	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "drying" {
+		t.Fatal(got)
+	}
+	w.DewMaxF, w.Antecedent = 70, 0.4
+	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "wet rock" {
+		t.Fatal(got)
+	}
+	// Combining the displayed metrics must not move humidity ahead of heat
+	// in the overall score or change its icon.
+	w = Window{Valid: true, TmaxF: 95, DewMaxF: 70}
+	if got := Score(w, p, "AM", th); got != (Result{Red, "too hot"}) || iconOf(got) != "i-sun" {
+		t.Fatal(got)
+	}
+}
+
+func TestDailyHumidityWetness(t *testing.T) {
+	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	th := DefaultThresholds()
+	for _, tc := range []struct {
+		am, pm Window
+		want   Result
+	}{
+		{Window{Valid: true, TmaxF: 75}, Window{Valid: true, TmaxF: 75, DewMaxF: 70}, Result{Red, "very humid"}},
+		{Window{Valid: true, TmaxF: 75, DewMaxF: 60}, Window{Valid: true, TmaxF: 75, Antecedent: 0.2}, Result{Yellow, "drying"}},
+		{Window{Valid: true, TmaxF: 75, Antecedent: 0.2}, Window{Valid: true, TmaxF: 75, DewMaxF: 60}, Result{Yellow, "drying"}},
+		{Window{Valid: true, TmaxF: 75, DewMaxF: 70}, Window{Valid: true, TmaxF: 75, PrecipIn: 0.02}, Result{Red, "rain forecast"}},
+		{Window{}, Window{Valid: true, TmaxF: 75, DewMaxF: 60}, Result{Yellow, "humid"}},
+		{Window{Valid: true, TmaxF: 75}, Window{}, Result{Green, "dry"}},
+		{Window{}, Window{}, Result{Yellow, "—"}},
+	} {
+		cd := cragDays([]DayForecast{{AM: tc.am, PM: tc.pm}}, p, th)[0]
+		if cd.Wetness != tc.want.Reason || strings.Split(cd.Highlights, "|")[1] != classOf(tc.want.Verdict) {
+			t.Fatalf("AM=%+v PM=%+v: got %+v, want %+v", tc.am, tc.pm, cd, tc.want)
+		}
+	}
+	if got := worseWetness(Result{Red, "rain forecast"}, Result{Red, "rain likely"}); got.Reason != "rain forecast" {
+		t.Fatal("equal priority must retain AM:", got)
+	}
+	fields := strings.Split(windowData(Window{}, Result{Yellow, "no data"}, [6]Verdict{}), ",")
+	if len(fields) != 7 {
+		t.Fatal(fields)
 	}
 }
 

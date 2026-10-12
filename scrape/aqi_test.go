@@ -245,12 +245,12 @@ func TestIndependentMetricWarnings(t *testing.T) {
 		t.Fatal(grades)
 	}
 	data := strings.Split(windowData(w, r, grades), ",")
-	if len(data) != 8 || data[7] != "go|wet|go|go|warn" {
+	if len(data) != 7 || data[6] != "go|wet|go|warn" {
 		t.Fatal(data)
 	}
 	day := DayForecast{AM: w, PM: Window{Valid: true, TmaxF: 65, WindMaxMph: 30}}
 	cd := cragDays([]DayForecast{day}, p, th)[0]
-	if cd.Highlights != "go|wet|go|warn|warn" {
+	if cd.Highlights != "go|wet|warn|warn" {
 		t.Fatal(cd.Highlights)
 	}
 	w.AQI = nil

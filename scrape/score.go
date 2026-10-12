@@ -81,7 +81,7 @@ func Score(w Window, p Profile, win string, t Thresholds) Result {
 		return Result{Yellow, "no data"}
 	}
 	grades := metricGrades(w, p, win, t)
-	wetness := wetnessResult(w, grades)
+	wetness := rainDryingResult(w, grades)
 	result := Result{Green, "good"}
 	// Preserve weather reason priority while selecting the worst metric grade.
 	for _, severity := range []Verdict{Red, Yellow} {
@@ -283,8 +283,22 @@ func rainGrade(w Window, t Thresholds) Verdict {
 	}
 }
 
-// wetnessResult selects rain on an equally severe rain/drying warning.
+// wetnessResult combines rain, drying, and humidity without treating humid air
+// as a prediction of wet rock. Rain and drying win equally severe warnings.
 func wetnessResult(w Window, grades [6]Verdict) Result {
+	wetness := rainDryingResult(w, grades)
+	if w.Valid && grades[3] > wetness.Verdict {
+		reason := "humid"
+		if grades[3] == Red {
+			reason = "very humid"
+		}
+		return Result{grades[3], reason}
+	}
+	return wetness
+}
+
+// rainDryingResult preserves the existing overall scoring reason priority.
+func rainDryingResult(w Window, grades [6]Verdict) Result {
 	if !w.Valid {
 		return Result{Yellow, "—"}
 	}
@@ -308,10 +322,31 @@ func wetnessResult(w Window, grades [6]Verdict) Result {
 	}
 }
 
+// worseWetness selects severity first, then rain, drying, and humidity.
+// A valid window wins over a missing one; otherwise the first wins equal ties.
 func worseWetness(a, b Result) Result {
+	if a.Reason == "—" {
+		return b
+	}
+	if b.Reason == "—" {
+		return a
+	}
 	if b.Verdict > a.Verdict || b.Verdict == a.Verdict &&
-		strings.HasPrefix(b.Reason, "rain ") && !strings.HasPrefix(a.Reason, "rain ") {
+		wetnessPriority(b.Reason) > wetnessPriority(a.Reason) {
 		return b
 	}
 	return a
+}
+
+func wetnessPriority(reason string) int {
+	switch {
+	case strings.HasPrefix(reason, "rain "):
+		return 3
+	case reason == "drying" || reason == "wet rock":
+		return 2
+	case reason == "humid" || reason == "very humid":
+		return 1
+	default:
+		return 0
+	}
 }
