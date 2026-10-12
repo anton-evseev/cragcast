@@ -7,6 +7,8 @@ set -eu
 : "${CLOUDFLARE_ACCOUNT_ID:?set CLOUDFLARE_ACCOUNT_ID to a Cloudflare account ID}"
 
 REGION=${REGION:-seattle}
+docker pull "$IMAGE"
+
 mkdir -p "$WORK_DIR"
 run_dir=$(mktemp -d "$WORK_DIR/run.XXXXXX")
 printf 'Run directory: %s\n' "$run_dir"
