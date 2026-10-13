@@ -32,7 +32,7 @@ Run the script on a schedule with these variables set:
 sh /path/to/publish-cloudflare.sh
 ```
 
-Each run pulls the image, scrapes the forecast, bundles the static pages, and deploys them through the Cloudflare API. If a command fails, the script stops before the next step. With `latest`, new image releases are picked up automatically. Run directories remain under `WORK_DIR` and need occasional manual removal.
+Each run pulls the image, scrapes the forecast, bundles the static pages, and deploys them through the Cloudflare API. If a command fails, the script skips the remaining steps and exits with an error after cleanup. With `latest`, new image releases are picked up automatically. The run directory is removed after successful and failed runs.
 
 To deploy an existing bundle directly, set the Cloudflare variables and run:
 

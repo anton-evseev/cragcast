@@ -13,13 +13,25 @@ mkdir -p "$WORK_DIR"
 run_dir=$(mktemp -d "$WORK_DIR/run.XXXXXX")
 printf 'Run directory: %s\n' "$run_dir"
 
-docker run --rm -v "$run_dir:/work" \
-    "$IMAGE" scrape --region "$REGION" --out /work/forecast
+status=0
+{
+    docker run --rm -v "$run_dir:/work" \
+        "$IMAGE" scrape --region "$REGION" --out /work/forecast &&
+    docker run --rm -v "$run_dir:/work" \
+        "$IMAGE" bundle --region "$REGION" --from /work/forecast --out /work/dist &&
+    docker run --rm \
+        -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID \
+        -v "$run_dir:/work:ro" \
+        "$IMAGE" deploy-cloudflare --from /work/dist
+} || status=$?
 
-docker run --rm -v "$run_dir:/work" \
-    "$IMAGE" bundle --region "$REGION" --from /work/forecast --out /work/dist
+# Use Docker to remove files created by the containers as root.
+docker run --rm --entrypoint rm -v "$WORK_DIR:/work" \
+    "$IMAGE" -rf "/work/${run_dir##*/}" || {
+    cleanup_status=$?
+    if [ "$status" -eq 0 ]; then
+        status=$cleanup_status
+    fi
+}
 
-docker run --rm \
-    -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID \
-    -v "$run_dir:/work:ro" \
-    "$IMAGE" deploy-cloudflare --from /work/dist
+exit "$status"
