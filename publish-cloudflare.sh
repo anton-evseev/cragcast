@@ -20,7 +20,6 @@ docker run --rm -v "$run_dir:/work" \
     "$IMAGE" bundle --region "$REGION" --from /work/forecast --out /work/dist
 
 docker run --rm \
-    --entrypoint wrangler --workdir /work \
-    -e HOME=/tmp -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID \
-    -v "$run_dir:/work" -v "$run_dir/dist:/app/dist:ro" \
-    "$IMAGE" deploy --config /app/wrangler.jsonc
+    -e CLOUDFLARE_API_TOKEN -e CLOUDFLARE_ACCOUNT_ID \
+    -v "$run_dir:/work:ro" \
+    "$IMAGE" deploy-cloudflare --from /work/dist

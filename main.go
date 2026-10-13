@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/anton-evseev/cragcast/bundle"
 	"github.com/anton-evseev/cragcast/config"
+	"github.com/anton-evseev/cragcast/deploycloudflare"
 	"github.com/anton-evseev/cragcast/scrape"
 	"github.com/anton-evseev/cragcast/serve"
 )
@@ -22,7 +24,7 @@ func main() {
 }
 
 func run(args []string) error {
-	cmds := []string{"bundle", "scrape", "serve"}
+	cmds := []string{"bundle", "deploy-cloudflare", "scrape", "serve"}
 	if len(args) == 0 {
 		return fmt.Errorf("usage: cragcast <%s> [flags]", strings.Join(cmds, "|"))
 	}
@@ -30,6 +32,8 @@ func run(args []string) error {
 	switch cmd {
 	case "bundle":
 		return runBundle(rest)
+	case "deploy-cloudflare":
+		return runDeployCloudflare(rest)
 	case "scrape":
 		return runScrape(rest)
 	case "serve":
@@ -37,6 +41,23 @@ func run(args []string) error {
 	default:
 		return fmt.Errorf("usage: cragcast <%s> [flags]", strings.Join(cmds, "|"))
 	}
+}
+
+func runDeployCloudflare(args []string) error {
+	fs := flag.NewFlagSet("deploy-cloudflare", flag.ContinueOnError)
+	from := fs.String("from", "", "directory containing bundled static assets")
+	worker := fs.String("worker", "cragcast", "Cloudflare Worker name")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if fs.NArg() != 0 {
+		return fmt.Errorf("deploy-cloudflare: unexpected arguments: %s", strings.Join(fs.Args(), " "))
+	}
+	return deploycloudflare.Run(context.Background(), deploycloudflare.Options{
+		From: *from, Worker: *worker,
+		AccountID: os.Getenv("CLOUDFLARE_ACCOUNT_ID"),
+		APIToken:  os.Getenv("CLOUDFLARE_API_TOKEN"),
+	})
 }
 
 func runScrape(args []string) error {

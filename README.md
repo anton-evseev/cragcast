@@ -15,7 +15,7 @@ The script publishes AMD64 and ARM64 images to `antonevseev/cragcast`, tagged `l
 
 Install Docker and copy `publish-cloudflare.sh` to the machine running the scheduled task. The task's account needs access to Docker and a writable working directory. Building the image on that machine is not required.
 
-Create a Cloudflare API token with **Account → Workers Scripts → Edit** and **Account → Account Settings → Read**, scoped to your account. Do not put the token in the repository.
+Create a Cloudflare API token with **Workers Editor** access scoped to the existing `cragcast` Worker. Do not put the token in the repository.
 
 Set these variables in the environment of the scheduled task:
 
@@ -32,4 +32,14 @@ Run the script on a schedule with these variables set:
 sh /path/to/publish-cloudflare.sh
 ```
 
-Each run pulls the image, scrapes the forecast, bundles the static pages, and deploys them with Wrangler. If a command fails, the script stops before the next step. With `latest`, new image releases are picked up automatically. Run directories remain under `WORK_DIR` and need occasional manual removal.
+Each run pulls the image, scrapes the forecast, bundles the static pages, and deploys them through the Cloudflare API. If a command fails, the script stops before the next step. With `latest`, new image releases are picked up automatically. Run directories remain under `WORK_DIR` and need occasional manual removal.
+
+To deploy an existing bundle directly, set the Cloudflare variables and run:
+
+```sh
+cragcast deploy-cloudflare --from /path/to/bundle
+```
+
+The Worker name defaults to `cragcast`; use `--worker` to override it. Deployment uses HTML routing and the bundled `404.html` page. No Wrangler installation or configuration file is required.
+
+When upgrading from the Wrangler image, replace the publish script and image together before re-enabling the scheduled task.

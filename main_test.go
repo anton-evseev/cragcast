@@ -24,3 +24,19 @@ func TestScrapeWithoutDeploymentConfig(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestDeployCloudflareArguments(t *testing.T) {
+	t.Setenv("CLOUDFLARE_API_TOKEN", "")
+	t.Setenv("CLOUDFLARE_ACCOUNT_ID", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	for _, args := range [][]string{
+		{"deploy-cloudflare"},
+		{"deploy-cloudflare", "--from", t.TempDir()},
+		{"deploy-cloudflare", "--from", t.TempDir(), "--worker", "../bad"},
+		{"deploy-cloudflare", "--from", t.TempDir(), "unexpected"},
+		{"deploy-cloudflare", "--unknown"},
+	} {
+		if err := run(args); err == nil {
+			t.Fatalf("accepted %v", args)
+		}
+	}
+}
