@@ -1,4 +1,29 @@
-# cragcast
+# Cragcast
+
+Cragcast is a climbing conditions forecast for areas within driving distance of Seattle. It uses green, yellow, and red ratings to help climbers compare crags and choose when to go.
+
+The Go application fetches weather and air quality forecasts from Open-Meteo, scores morning and afternoon conditions for each crag, and generates static HTML. Ratings account for rain probability, drying, temperature, humidity, wind, and air quality, along with rock type, sun exposure, and seepage. Air quality forecasts use CAMS data. The website is hosted on Cloudflare Workers.
+
+Live site: [cragcast.org](https://cragcast.org).
+
+## Requirements
+
+- Go 1.27.2 or later to run from source, or Docker for the container workflow.
+- The regional YAML files in `regions/` for scraping and serving forecasts.
+- Network access to Open-Meteo. Cloudflare credentials are needed only for deployment.
+
+## Run locally
+
+From the repository root, fetch a forecast and serve it:
+
+```sh
+go run . scrape --region seattle --out ./data
+go run . serve --region seattle --from ./data --addr 127.0.0.1:8090
+```
+
+Open [localhost:8090](http://localhost:8090). Scraping does not require an API key.
+
+Run the tests with `go test ./...`.
 
 ## Build and publish the Docker image
 
