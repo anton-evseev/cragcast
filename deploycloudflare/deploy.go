@@ -56,7 +56,6 @@ type envelope struct {
 type client struct {
 	http    *http.Client
 	baseURL string
-	wait    func(context.Context, time.Duration) error
 }
 
 // Run publishes the directory as an assets-only Worker, using built-in HTML
@@ -65,7 +64,6 @@ func Run(ctx context.Context, opts Options) error {
 	c := client{
 		http:    &http.Client{Timeout: 2 * time.Minute, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }},
 		baseURL: apiURL,
-		wait:    wait,
 	}
 	return c.run(ctx, opts)
 }
@@ -269,7 +267,7 @@ func (c client) request(ctx context.Context, stage, method, path, token, content
 	}
 	for attempt := 0; attempt < attempts; attempt++ {
 		if attempt > 0 {
-			if err := c.wait(ctx, time.Duration(attempt)*time.Second); err != nil {
+			if err := wait(ctx, time.Duration(attempt)*time.Second); err != nil {
 				return nil, fmt.Errorf("%s: %w", stage, err)
 			}
 		}

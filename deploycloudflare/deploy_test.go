@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -16,13 +17,14 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
 const account = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 func testClient(s *httptest.Server) client {
-	return client{http: s.Client(), baseURL: s.URL, wait: func(context.Context, time.Duration) error { return nil }}
+	return client{http: s.Client(), baseURL: s.URL}
 }
 
 func fixture(t *testing.T) string {
@@ -108,7 +110,7 @@ func TestUploadFlow(t *testing.T) {
 			var hashes []string
 			contents := make(map[string]string)
 			var requests int
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				requests++
 				w.Header().Set("Content-Type", "application/json")
 				workerPath := "/accounts/" + account + "/workers/scripts/test-worker"
@@ -233,7 +235,6 @@ func TestUploadFlow(t *testing.T) {
 					w.WriteHeader(400)
 				}
 			}))
-			defer s.Close()
 			err := testClient(s).run(context.Background(), Options{From: root, Worker: "test-worker", AccountID: account, APIToken: "api-secret"})
 			if err != nil {
 				t.Fatal(err)
@@ -258,7 +259,7 @@ func TestInvalidSessionAndCompletion(t *testing.T) {
 		{"missing completion", `{"jwt":"secret","buckets":[["5deeda9d2277e0ed541bfc03adafb3cf"]]}`, `{}`, "completion token"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			s := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				if r.Method == "PUT" {
 					t.Error("deployed after invalid upload")
 					w.WriteHeader(400)
@@ -270,7 +271,6 @@ func TestInvalidSessionAndCompletion(t *testing.T) {
 				}
 				io.WriteString(w, `{"success":true,"result":`+result+`}`)
 			}))
-			defer s.Close()
 			err := testClient(s).run(context.Background(), Options{From: fixture(t), Worker: "test-worker", AccountID: account, APIToken: "api-secret"})
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
 				t.Fatal(err)
@@ -298,69 +298,97 @@ func TestRequestFailuresAndRetries(t *testing.T) {
 		{"missing deployment status", 200, `{}`, false, 1, "outcome is unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			var count atomic.Int32
-			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				count.Add(1)
-				w.WriteHeader(tc.status)
-				io.WriteString(w, tc.body)
-			}))
-			defer s.Close()
-			c := testClient(s)
-			var delays []time.Duration
-			c.wait = func(_ context.Context, d time.Duration) error { delays = append(delays, d); return nil }
-			_, err := c.request(context.Background(), "stage", "POST", "/", "api-secret", "application/json", []byte(`{}`), tc.retry, []string{"api-secret", "upload-secret", "completion-secret"})
-			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Fatal(err)
-			}
-			for _, token := range []string{"api-secret", "upload-secret", "completion-secret"} {
-				if strings.Contains(err.Error(), token) {
-					t.Fatal("token leaked")
+			synctest.Test(t, func(t *testing.T) {
+				var count atomic.Int32
+				start := time.Now()
+				var attempts []time.Duration
+				s := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+					count.Add(1)
+					attempts = append(attempts, time.Since(start))
+					w.WriteHeader(tc.status)
+					io.WriteString(w, tc.body)
+				}))
+				c := testClient(s)
+				_, err := c.request(context.Background(), "stage", "POST", "/", "api-secret", "application/json", []byte(`{}`), tc.retry, []string{"api-secret", "upload-secret", "completion-secret"})
+				if err == nil || !strings.Contains(err.Error(), tc.want) {
+					t.Fatal(err)
 				}
-			}
-			if int(count.Load()) != tc.attempts {
-				t.Fatal(count.Load())
-			}
-			if tc.attempts == 3 && !slices.Equal(delays, []time.Duration{time.Second, 2 * time.Second}) {
-				t.Fatal(delays)
-			}
+				for _, token := range []string{"api-secret", "upload-secret", "completion-secret"} {
+					if strings.Contains(err.Error(), token) {
+						t.Fatal("token leaked")
+					}
+				}
+				if int(count.Load()) != tc.attempts {
+					t.Fatal(count.Load())
+				}
+				wantTimes := []time.Duration{0}
+				if tc.attempts == 3 {
+					wantTimes = append(wantTimes, time.Second, 3*time.Second)
+				}
+				if !slices.Equal(attempts, wantTimes) {
+					t.Fatalf("request times=%v, want %v", attempts, wantTimes)
+				}
+			})
 		})
 	}
 }
 
 func TestTransientRecoveryAndNetworkFailure(t *testing.T) {
-	var count atomic.Int32
-	s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if count.Add(1) == 1 {
-			w.WriteHeader(503)
-			return
+	synctest.Test(t, func(t *testing.T) {
+		var count atomic.Int32
+		s := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if count.Add(1) == 1 {
+				w.WriteHeader(503)
+				return
+			}
+			io.WriteString(w, `{"success":true,"result":{"jwt":"token"}}`)
+		}))
+		c := testClient(s)
+		start := time.Now()
+		if _, err := c.request(context.Background(), "upload", "POST", "/", "token", "application/json", nil, true, nil); err != nil {
+			t.Fatal(err)
 		}
-		io.WriteString(w, `{"success":true,"result":{"jwt":"token"}}`)
-	}))
-	c := testClient(s)
-	if _, err := c.request(context.Background(), "upload", "POST", "/", "token", "application/json", nil, true, nil); err != nil {
-		t.Fatal(err)
-	}
-	if count.Load() != 2 {
-		t.Fatal(count.Load())
-	}
-	s.Close()
-	// A dead server exercises transport failures without reaching Cloudflare.
-	for _, retry := range []bool{true, false} {
-		waits := 0
-		c.wait = func(context.Context, time.Duration) error { waits++; return nil }
-		_, err := c.request(context.Background(), "stage", "POST", "/", "token", "application/json", nil, retry, nil)
-		if err == nil {
-			t.Fatal("accepted transport failure")
+		if count.Load() != 2 || time.Since(start) != time.Second {
+			t.Fatal(count.Load(), time.Since(start))
 		}
-		if retry && waits != 2 || !retry && (waits != 0 || !strings.Contains(err.Error(), "outcome is unknown")) {
-			t.Fatal(waits, err)
+		// Drop the connection before sending a response to exercise transport
+		// failures without a real network listener.
+		var dropped atomic.Int32
+		broken := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			dropped.Add(1)
+			conn, _, err := http.NewResponseController(w).Hijack()
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			conn.Close()
+		}))
+		c = testClient(broken)
+		for _, retry := range []bool{true, false} {
+			before := dropped.Load()
+			start := time.Now()
+			_, err := c.request(context.Background(), "stage", "POST", "/", "token", "application/json", nil, retry, nil)
+			if err == nil {
+				t.Fatal("accepted transport failure")
+			}
+			elapsed := time.Since(start)
+			if retry && elapsed != 3*time.Second || !retry && (elapsed != 0 || !strings.Contains(err.Error(), "outcome is unknown")) {
+				t.Fatal(elapsed, err)
+			}
+			want := int32(1)
+			if retry {
+				want = 3
+			}
+			if got := dropped.Load() - before; got != want {
+				t.Fatalf("transport attempts=%d, want %d", got, want)
+			}
 		}
-	}
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	if err := wait(ctx, time.Hour); err != context.Canceled {
-		t.Fatal(err)
-	}
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if err := wait(ctx, time.Hour); err != context.Canceled {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestMultipartBucket(t *testing.T) {
@@ -397,4 +425,35 @@ func TestMultipartBucket(t *testing.T) {
 	if _, err := reader.NextPart(); err != io.EOF {
 		t.Fatal(err)
 	}
+}
+
+func TestCancelDuringRetryDelay(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		var count atomic.Int32
+		s := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			count.Add(1)
+			w.WriteHeader(http.StatusServiceUnavailable)
+		}))
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		start := time.Now()
+		done := make(chan error, 1)
+		go func() {
+			_, err := testClient(s).request(ctx, "upload", "POST", "/", "token", "application/json", nil, true, nil)
+			done <- err
+		}()
+		synctest.Wait()
+		if count.Load() != 1 {
+			t.Fatal(count.Load())
+		}
+		synctest.Sleep(500 * time.Millisecond)
+		cancel()
+		synctest.Wait()
+		if err := <-done; !errors.Is(err, context.Canceled) {
+			t.Fatal(err)
+		}
+		if count.Load() != 1 || time.Since(start) != 500*time.Millisecond {
+			t.Fatal("cancellation did not stop the retry delay")
+		}
+	})
 }
