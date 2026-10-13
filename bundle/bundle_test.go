@@ -40,7 +40,7 @@ func TestRun(t *testing.T) {
 		}
 	}
 	for name, expected := range map[string]string{
-		"about.html": "About — CragCast",
+		"about.html": "About — Cragcast",
 		"404.html":   "That page isn't available.",
 	} {
 		got, err := os.ReadFile(filepath.Join(out, name))
