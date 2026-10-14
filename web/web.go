@@ -37,7 +37,7 @@ type Chrome struct {
 
 // FooterData is the context the shared footer partial renders against.
 type FooterData struct {
-	Github    string // repo URL; the GitHub link is omitted when empty
+	Github    string // repo URL; defaults to the Cragcast repository when empty
 	ShowAbout bool   // false on the about page itself
 }
 
