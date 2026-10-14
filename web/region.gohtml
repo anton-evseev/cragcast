@@ -94,8 +94,8 @@
         top: 0;
         z-index: 2;
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 6px;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
         background: var(--page);
         padding: 12px 0 8px;
         margin-top: 10px;
@@ -168,15 +168,10 @@
     /* ---- forecast cells ---- */
     .forecast {
         display: grid;
-        grid-template-columns: repeat(5, 1fr);
-        gap: 6px;
+        grid-template-columns: repeat(7, minmax(0, 1fr));
+        gap: 4px;
     }
 
-    /* mobile shows 5 days; days 6–7 are in the HTML but hidden */
-    .days > :nth-child(n + 6),
-    .forecast > :nth-child(n + 6) {
-        display: none;
-    }
     .cell {
         min-height: 58px;
         border-radius: var(--cell-r);
@@ -345,6 +340,31 @@
     }
 
     @media (max-width: 639px) {
+        .day b {
+            font-size: 12px;
+        }
+        .day small {
+            font-size: 10px;
+            white-space: nowrap;
+        }
+        .cell .icons {
+            gap: 1px;
+        }
+        .cell .icons svg:not(:only-child) {
+            width: 11px;
+            height: 14px;
+        }
+        .cell .sep {
+            font-size: 10px;
+        }
+        .cell.split {
+            min-height: 74px;
+        }
+        .band {
+            flex-direction: column;
+            gap: 0;
+            padding: 2px 0;
+        }
         .detail {
             padding: 10px 12px;
         }
@@ -373,7 +393,7 @@
         }
     }
 
-    /* desktop shows all 7 days */
+    /* Desktop gives all seven days equal space. */
     @media (min-width: 640px) {
         .crag-grid {
             column-gap: 12px;
@@ -384,12 +404,7 @@
         .days,
         .forecast {
             grid-template-columns: repeat(7, 1fr);
-        }
-        .days > :nth-child(n + 6) {
-            display: block;
-        }
-        .forecast > :nth-child(n + 6) {
-            display: flex;
+            gap: 6px;
         }
     }
 
