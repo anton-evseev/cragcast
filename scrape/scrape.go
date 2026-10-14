@@ -92,6 +92,15 @@ func (s *scraper) region(r config.Region) error {
 	if err != nil {
 		return err
 	}
+	// Check every location before writing pages so incomplete weather cannot
+	// replace the previous forecast.
+	for point, hours := range fetched {
+		for _, day := range Aggregate(hours, loc, now, forecastDays) {
+			if !day.AM.Valid || !day.PM.Valid {
+				return fmt.Errorf("incomplete weather coverage for %g, %g on %s", point.Lat, point.Lon, day.Date.Format("2006-01-02"))
+			}
+		}
+	}
 	scraped := 0
 
 	for _, area := range r.Areas {

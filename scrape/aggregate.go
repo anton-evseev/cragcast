@@ -56,7 +56,9 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 	var cloudSum float64
 	var count int
 	probabilities := map[int64]float64{}
+	coverage := map[int64]int{}
 	for _, h := range hours {
+		coverage[h.Time.Unix()]++
 		// Precipitation and probability describe the hour ending at Time.
 		if h.Time.After(start) && !h.Time.After(end) {
 			w.PrecipIn += h.Precip
@@ -93,6 +95,14 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 	}
 	if complete {
 		w.PrecipProbability = &peak
+	}
+	// Require every hour used by the window and its rain history exactly once.
+	// Rain describes the preceding hour, so the lookback start is excluded.
+	for t := start.Add(-antecedentHrs * time.Hour).Add(time.Hour); !t.After(end); t = t.Add(time.Hour) {
+		if coverage[t.Unix()] != 1 {
+			w.Valid = false
+			break
+		}
 	}
 	return w
 }

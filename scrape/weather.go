@@ -49,13 +49,13 @@ func NewOpenMeteo() *OpenMeteo {
 // raw mirrors the Open-Meteo JSON response (only the fields we request).
 type omResponse struct {
 	Hourly struct {
-		Time              []int64    `json:"time"`
-		Temp              []float64  `json:"temperature_2m"`
-		Precip            []float64  `json:"precipitation"`
+		Time              []*int64   `json:"time"`
+		Temp              []*float64 `json:"temperature_2m"`
+		Precip            []*float64 `json:"precipitation"`
 		PrecipProbability []*float64 `json:"precipitation_probability"`
-		Wind              []float64  `json:"wind_speed_10m"`
-		DewPoint          []float64  `json:"dew_point_2m"`
-		CloudCover        []float64  `json:"cloud_cover"`
+		Wind              []*float64 `json:"wind_speed_10m"`
+		DewPoint          []*float64 `json:"dew_point_2m"`
+		CloudCover        []*float64 `json:"cloud_cover"`
 	} `json:"hourly"`
 	Error  bool   `json:"error"`
 	Reason string `json:"reason"`
@@ -206,6 +206,26 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 	}
 	hours := make([]Hour, 0, n)
 	for i := 0; i < n; i++ {
+		if raw.Hourly.Time[i] == nil {
+			return nil, fmt.Errorf("open-meteo missing time at hour %d", i)
+		}
+		if i > 0 && *raw.Hourly.Time[i]-*raw.Hourly.Time[i-1] != int64(time.Hour/time.Second) {
+			return nil, fmt.Errorf("open-meteo timestamps are not consecutive hours at hour %d", i)
+		}
+		for _, field := range []struct {
+			name  string
+			value *float64
+		}{
+			{"temperature_2m", raw.Hourly.Temp[i]},
+			{"precipitation", raw.Hourly.Precip[i]},
+			{"wind_speed_10m", raw.Hourly.Wind[i]},
+			{"dew_point_2m", raw.Hourly.DewPoint[i]},
+			{"cloud_cover", raw.Hourly.CloudCover[i]},
+		} {
+			if field.value == nil {
+				return nil, fmt.Errorf("open-meteo missing %s at hour %d", field.name, i)
+			}
+		}
 		var probability *float64
 		if len(raw.Hourly.PrecipProbability) != 0 {
 			probability = raw.Hourly.PrecipProbability[i]
@@ -213,15 +233,15 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 				return nil, fmt.Errorf("open-meteo probability outside 0–100")
 			}
 		}
-		t := time.Unix(raw.Hourly.Time[i], 0).In(loc)
+		t := time.Unix(*raw.Hourly.Time[i], 0).In(loc)
 		hours = append(hours, Hour{
 			Time:              t,
-			TempF:             raw.Hourly.Temp[i],
-			Precip:            raw.Hourly.Precip[i],
+			TempF:             *raw.Hourly.Temp[i],
+			Precip:            *raw.Hourly.Precip[i],
 			PrecipProbability: probability,
-			WindMph:           raw.Hourly.Wind[i],
-			DewF:              raw.Hourly.DewPoint[i],
-			Cloud:             raw.Hourly.CloudCover[i],
+			WindMph:           *raw.Hourly.Wind[i],
+			DewF:              *raw.Hourly.DewPoint[i],
+			Cloud:             *raw.Hourly.CloudCover[i],
 		})
 	}
 	return hours, nil
