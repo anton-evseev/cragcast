@@ -566,22 +566,30 @@
                     );
                 }
 
-                function close() {
+                function close(restoreFocus) {
                     if (!active) return;
                     active.setAttribute("aria-expanded", "false");
                     active.closest(".area").querySelector(".detail").hidden = true;
+                    if (restoreFocus) active.focus({ preventScroll: true });
                     active = null;
                 }
 
+                app.addEventListener("keydown", function (e) {
+                    if (e.key === "Escape" && active) {
+                        e.preventDefault();
+                        close(true);
+                    }
+                });
+
                 app.addEventListener("click", function (e) {
                     if (e.target.closest(".detail-close")) {
-                        close();
+                        close(true);
                         return;
                     }
                     var cell = e.target.closest(".cell");
                     if (!cell) return;
                     if (cell === active) {
-                        close();
+                        close(true);
                         return;
                     }
                     close();
