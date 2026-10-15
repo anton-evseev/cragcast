@@ -217,7 +217,10 @@ func cells(days []DayForecast, p Profile, th Thresholds) []web.Cell {
 			cell.Class = classOf(am.Verdict)
 			limiting := worseResult(am, pm)
 			cell.Icon = iconOf(limiting)
-			cell.Temp = fmt.Sprintf("%.0f°", max(d.AM.TmaxF, d.PM.TmaxF))
+			cell.Temp = "—"
+			if d.AM.Valid || d.PM.Valid {
+				cell.Temp = fmt.Sprintf("%.0f°", max(d.AM.TmaxF, d.PM.TmaxF))
+			}
 			cell.Label = fmt.Sprintf("%s, %s", d.Date.Format("Mon"), limiting.Reason)
 		} else {
 			cell.Split = true
