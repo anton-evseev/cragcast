@@ -35,6 +35,7 @@ type cragDay struct {
 	Highlights string
 	AQI        string
 	Wind       string
+	CloudMean  float64 // mean cloud cover across valid morning/afternoon windows
 	HighF      float64 // numeric day-high, for averaging the area temperature
 	Valid      bool    // false when the day had no data
 }
@@ -141,28 +142,39 @@ func (s *scraper) region(r config.Region) error {
 			verdicts := make([]Verdict, len(perCrag))
 			conds := make([][8]string, len(perCrag))
 			cragIcons := make([]string, len(perCrag))
-			var highSum float64
+			var highSum, cloudSum float64
 			var highN int
 			for c := range perCrag {
 				cd := perCrag[c][i]
 				verdicts[c] = cd.Verdict
-				cragIcons[c] = iconOf(Result{Verdict: cd.Verdict, Reason: cd.Reason})
+				if cd.Verdict != Green {
+					cragIcons[c] = iconOf(Result{Verdict: cd.Verdict, Reason: cd.Reason}, cd.CloudMean)
+				}
 				conds[c] = [8]string{area.Crags[c].Name, classOf(cd.Verdict), cd.Reason, cd.Temp, cd.Wetness, cd.Wind, cd.AQI, cd.Highlights}
 				if cd.Valid { // average only the crags that returned data
 					highSum += cd.HighF
+					cloudSum += cd.CloudMean
 					highN++
 				}
 			}
 			av := AreaVerdict(verdicts)
 			temp := "—"
+			cloudMean := 0.0
+			if highN > 0 {
+				cloudMean = cloudSum / float64(highN)
+			}
 			label := fmt.Sprintf("%s: %s", dates[i].Format("Mon"), verdictWord(av))
+			if av == Green {
+				_, sky := skyCondition(cloudMean)
+				label += ", " + sky
+			}
 			if highN > 0 {
 				temp = fmt.Sprintf("%.0f°", highSum/float64(highN))
 				label += ", " + temp
 			}
 			summary.Cells = append(summary.Cells, web.SummaryCell{
 				Class: classOf(av),
-				Icons: areaIcon(av, cragIcons),
+				Icons: areaIcon(av, cragIcons, cloudMean),
 				Temp:  temp,
 				Day:   i,
 				Label: label,
@@ -216,17 +228,17 @@ func cells(days []DayForecast, p Profile, th Thresholds) []web.Cell {
 		if am.Verdict == pm.Verdict {
 			cell.Class = classOf(am.Verdict)
 			limiting := worseResult(am, pm)
-			cell.Icon = iconOf(limiting)
+			cell.Icon = iconOf(limiting, dayCloudCover(d))
 			cell.Temp = "—"
 			if d.AM.Valid || d.PM.Valid {
 				cell.Temp = fmt.Sprintf("%.0f°", max(d.AM.TmaxF, d.PM.TmaxF))
 			}
-			cell.Label = fmt.Sprintf("%s, %s", d.Date.Format("Mon"), limiting.Reason)
+			cell.Label = fmt.Sprintf("%s, %s", d.Date.Format("Mon"), conditionText(limiting, dayCloudCover(d)))
 		} else {
 			cell.Split = true
-			cell.AM = web.Half{Class: classOf(am.Verdict), Icon: iconOf(am)}
-			cell.PM = web.Half{Class: classOf(pm.Verdict), Icon: iconOf(pm)}
-			cell.Label = fmt.Sprintf("%s, AM %s, PM %s", d.Date.Format("Mon"), am.Reason, pm.Reason)
+			cell.AM = web.Half{Class: classOf(am.Verdict), Icon: iconOf(am, d.AM.CloudMean)}
+			cell.PM = web.Half{Class: classOf(pm.Verdict), Icon: iconOf(pm, d.PM.CloudMean)}
+			cell.Label = fmt.Sprintf("%s, AM %s, PM %s", d.Date.Format("Mon"), conditionText(am, d.AM.CloudMean), conditionText(pm, d.PM.CloudMean))
 		}
 		out = append(out, cell)
 	}
@@ -247,7 +259,7 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 		for i := range grades {
 			grades[i] = max(grades[i], pmGrades[i])
 		}
-		cd := cragDay{Highlights: detailHighlights(grades, wetness), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Wetness: wetness.Reason, Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
+		cd := cragDay{CloudMean: dayCloudCover(d), Highlights: detailHighlights(grades, wetness), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Wetness: wetness.Reason, Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
 		if d.AM.Valid || d.PM.Valid {
 			cd.Valid = true
 			cd.HighF = max(d.AM.TmaxF, d.PM.TmaxF)
@@ -327,13 +339,14 @@ func verdictWord(v Verdict) string {
 }
 
 // areaIcon summarizes an area's day by merging its crags' individual icons
-// (each from iconOf, the single reason→icon mapping). Green wins outright; a mix
+// (each from iconOf, excluding green crags). Green uses average cloud cover; a mix
 // of a heat-limited crag (sun) and a wet one (rain cloud or drying drop) returns
 // two icons — sun and the wetness glyph — which the template renders with a "/"
 // between them; otherwise the single most-limiting icon shows.
-func areaIcon(av Verdict, cragIcons []string) []string {
+func areaIcon(av Verdict, cragIcons []string, cloudCover float64) []string {
 	if av == Green {
-		return []string{"i-check"}
+		icon, _ := skyCondition(cloudCover)
+		return []string{icon}
 	}
 	var sun, rain, drop, wind bool
 	for _, ic := range cragIcons {
@@ -373,10 +386,11 @@ func areaIcon(av Verdict, cragIcons []string) []string {
 	}
 }
 
-func iconOf(r Result) string {
+func iconOf(r Result, cloudCover float64) string {
 	switch {
 	case r.Verdict == Green:
-		return "i-check"
+		icon, _ := skyCondition(cloudCover)
+		return icon
 	case r.Reason == "hot" || r.Reason == "too hot":
 		return "i-sun" // heat is the culprit, whether Yellow or Red
 	case r.Reason == "air quality":
@@ -392,6 +406,36 @@ func iconOf(r Result) string {
 	default: // Other Yellow reasons use the drop
 		return "i-drop"
 	}
+}
+
+// dayCloudCover averages the two equal-length climbing windows, omitting missing data.
+func dayCloudCover(d DayForecast) float64 {
+	if !d.AM.Valid {
+		return d.PM.CloudMean
+	}
+	if !d.PM.Valid {
+		return d.AM.CloudMean
+	}
+	return (d.AM.CloudMean + d.PM.CloudMean) / 2
+}
+
+func skyCondition(cloudCover float64) (icon, description string) {
+	switch {
+	case cloudCover <= 20:
+		return "i-sun", "mostly clear"
+	case cloudCover < 80:
+		return "i-partly-cloudy", "partly cloudy"
+	default:
+		return "i-cloud", "overcast"
+	}
+}
+
+func conditionText(r Result, cloudCover float64) string {
+	if r.Verdict == Green {
+		_, sky := skyCondition(cloudCover)
+		return r.Reason + ", " + sky
+	}
+	return r.Reason
 }
 
 func aspectIcon(aspect string) string {

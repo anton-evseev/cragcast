@@ -33,3 +33,49 @@ func TestCellTemperatureWithoutData(t *testing.T) {
 		})
 	}
 }
+
+func TestGreenWeatherIcons(t *testing.T) {
+	p := Profile{Aspect: "shade", DryoutInches: 1}
+	th := DefaultThresholds()
+	for _, tc := range []struct {
+		cloud float64
+		icon  string
+		text  string
+	}{
+		{0, "i-sun", "mostly clear"},
+		{20, "i-sun", "mostly clear"},
+		{20.1, "i-partly-cloudy", "partly cloudy"},
+		{79.9, "i-partly-cloudy", "partly cloudy"},
+		{80, "i-cloud", "overcast"},
+		{100, "i-cloud", "overcast"},
+	} {
+		w := Window{Valid: true, TmaxF: 65, CloudMean: tc.cloud}
+		day := DayForecast{AM: w, PM: w}
+		cell := cells([]DayForecast{day}, p, th)[0]
+		if cell.Class != "go" || cell.Icon != tc.icon || !strings.Contains(cell.Label, tc.text) {
+			t.Fatalf("cloud cover %g: %+v", tc.cloud, cell)
+		}
+		cd := cragDays([]DayForecast{day}, p, th)[0]
+		icons := areaIcon(Green, nil, cd.CloudMean)
+		if len(icons) != 1 || icons[0] != tc.icon {
+			t.Fatalf("cloud cover %g: region icons %v", tc.cloud, icons)
+		}
+	}
+
+	day := DayForecast{
+		AM: Window{Valid: true, TmaxF: 65, CloudMean: 0},
+		PM: Window{Valid: true, TmaxF: 65, CloudMean: 100},
+	}
+	if cell := cells([]DayForecast{day}, p, th)[0]; cell.Icon != "i-partly-cloudy" {
+		t.Fatalf("daily cloud average ignored: %+v", cell)
+	}
+	day.AM.CloudMean = 100
+	day.PM.WindMaxMph = 30
+	cell := cells([]DayForecast{day}, p, th)[0]
+	if !cell.Split || cell.AM.Icon != "i-cloud" || cell.PM.Icon != "i-wind" {
+		t.Fatalf("split cell lost weather or warning icon: %+v", cell)
+	}
+	if !strings.Contains(cell.Label, "overcast") || !strings.Contains(cell.Label, "windy") {
+		t.Fatalf("split cell label lost weather or warning: %q", cell.Label)
+	}
+}

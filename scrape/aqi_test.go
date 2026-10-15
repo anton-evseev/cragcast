@@ -216,7 +216,7 @@ func TestAQIRenderingAndTies(t *testing.T) {
 	if cd.Reason != "air quality" || cd.AQI != "75" {
 		t.Fatal(cd)
 	}
-	if got := areaIcon(Yellow, []string{"i-rain", "i-air"}); got[0] != "i-air" {
+	if got := areaIcon(Yellow, []string{"i-rain", "i-air"}, 0); got[0] != "i-air" {
 		t.Fatal(got)
 	}
 	var region, area strings.Builder

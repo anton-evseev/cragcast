@@ -43,7 +43,7 @@ func TestProbabilityRainGrades(t *testing.T) {
 			if score.Verdict != tc.grade || tc.grade != Green && score.Reason != wet.Reason {
 				t.Fatal(score)
 			}
-			if tc.grade != Green && iconOf(score) != "i-rain" {
+			if tc.grade != Green && iconOf(score, w.CloudMean) != "i-rain" {
 				t.Fatal("rain warning has wrong icon")
 			}
 			fields := strings.Split(windowData(w, score, grades), ",")
@@ -95,7 +95,7 @@ func TestHumidityWetness(t *testing.T) {
 	// Combining the displayed metrics must not move humidity ahead of heat
 	// in the overall score or change its icon.
 	w = Window{Valid: true, TmaxF: 95, DewMaxF: 70}
-	if got := Score(w, p, "AM", th); got != (Result{Red, "too hot"}) || iconOf(got) != "i-sun" {
+	if got := Score(w, p, "AM", th); got != (Result{Red, "too hot"}) || iconOf(got, w.CloudMean) != "i-sun" {
 		t.Fatal(got)
 	}
 }
