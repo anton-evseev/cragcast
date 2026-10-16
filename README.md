@@ -59,6 +59,8 @@ sh /path/to/publish-cloudflare.sh
 
 Each run pulls the image, scrapes the forecast, bundles the static pages, and deploys them through the Cloudflare API. If a command fails, the script skips the remaining steps and exits with an error after cleanup. With `latest`, new image releases are picked up automatically. The run directory is removed after successful and failed runs.
 
+Open-Meteo requests have a 60-second timeout and up to four attempts for temporary failures. Retries wait 2, 4, and 8 seconds, or longer if the server requests it. Each region's scrape has a 10-minute deadline. Weather and air quality requests run in parallel, with locations batched together.
+
 To deploy an existing bundle directly, set the Cloudflare variables and run:
 
 ```sh

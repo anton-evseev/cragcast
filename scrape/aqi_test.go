@@ -92,6 +92,7 @@ func TestBatchJoinAndFailure(t *testing.T) {
 		t.Run(mode, func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				var active, peak atomic.Int32
+				var weatherCalls, airCalls atomic.Int32
 				weatherEntered := make(chan struct{}, 1)
 				airEntered := make(chan struct{}, 1)
 				server := httptest.NewTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,15 +100,21 @@ func TestBatchJoinAndFailure(t *testing.T) {
 					defer active.Add(-1)
 					for old := peak.Load(); n > old && !peak.CompareAndSwap(old, n); old = peak.Load() {
 					}
+					calls := &weatherCalls
+					if r.URL.Path == "/air" {
+						calls = &airCalls
+					}
 					send, receive := weatherEntered, airEntered
 					if r.URL.Path == "/air" {
 						send, receive = airEntered, weatherEntered
 					}
-					send <- struct{}{}
-					select {
-					case <-receive:
-					case <-time.After(time.Second):
-						t.Error("requests did not overlap")
+					if calls.Add(1) == 1 {
+						send <- struct{}{}
+						select {
+						case <-receive:
+						case <-time.After(time.Second):
+							t.Error("requests did not overlap")
+						}
 					}
 					if r.Header.Get("User-Agent") != userAgent || r.URL.Query().Get("timeformat") != "unixtime" {
 						t.Error("request settings")
@@ -153,6 +160,8 @@ func TestBatchJoinAndFailure(t *testing.T) {
 				}))
 				o := &OpenMeteo{Client: server.Client(), BaseURL: server.URL + "/weather", AirQualityURL: server.URL + "/air"}
 				for _, count := range []int{1, 2} {
+					weatherCalls.Store(0)
+					airCalls.Store(0)
 					points := make([]Coordinate, count)
 					rows, err := o.FetchBatch(context.Background(), points, time.UTC)
 					if mode == "weather-failure" {

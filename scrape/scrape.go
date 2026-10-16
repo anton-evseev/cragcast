@@ -79,7 +79,7 @@ func (s *scraper) region(r config.Region) error {
 		Updated: now.Format("Jan 2, 3:04 PM"), Days: dayHeaders(now, loc),
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 
 	view := web.RegionView{Chrome: chrome}

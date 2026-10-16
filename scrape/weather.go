@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"log"
+	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -40,7 +45,7 @@ type OpenMeteo struct {
 
 func NewOpenMeteo() *OpenMeteo {
 	return &OpenMeteo{
-		Client:        &http.Client{Timeout: 20 * time.Second},
+		Client:        &http.Client{Timeout: 60 * time.Second},
 		BaseURL:       "https://api.open-meteo.com/v1/forecast",
 		AirQualityURL: "https://air-quality-api.open-meteo.com/v1/air-quality",
 	}
@@ -75,6 +80,8 @@ func (o *OpenMeteo) FetchBatch(ctx context.Context, points []Coordinate, loc *ti
 	if len(points) > batchSize {
 		return nil, fmt.Errorf("batch exceeds %d locations", batchSize)
 	}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 	q := url.Values{}
 	var lats, lons []string
 	for _, p := range points {
@@ -118,10 +125,12 @@ func (o *OpenMeteo) FetchBatch(ctx context.Context, points []Coordinate, loc *ti
 		airDone <- airResult{data, err}
 	}()
 	raw, err := requestBatch[omResponse](ctx, o.Client, o.BaseURL, q, len(points))
-	air := <-airDone
 	if err != nil {
+		cancel()
+		<-airDone
 		return nil, err
 	}
+	air := <-airDone
 	if air.err != nil {
 		log.Printf("Warning: AQI unavailable for batch: %v", air.err)
 	}
@@ -156,24 +165,14 @@ type aqResponse struct {
 	Reason string `json:"reason"`
 }
 
+const requestAttempts = 4
+
 func requestBatch[T any](ctx context.Context, client *http.Client, endpoint string, q url.Values, count int) ([]T, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+q.Encode(), nil)
+	body, err := requestJSON(ctx, client, endpoint, q)
 	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
+		return nil, err
 	}
-	req.Header.Set("User-Agent", userAgent)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("fetch: %w", err)
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("open-meteo status %d", resp.StatusCode)
-	}
-	var body json.RawMessage
-	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
-		return nil, fmt.Errorf("decode: %w", err)
-	}
+
 	var rows []T
 	body = bytes.TrimSpace(body)
 	if len(body) > 0 && body[0] == '[' {
@@ -190,6 +189,77 @@ func requestBatch[T any](ctx context.Context, client *http.Client, endpoint stri
 		return nil, fmt.Errorf("open-meteo returned %d locations, expected %d", len(rows), count)
 	}
 	return rows, nil
+}
+
+// requestJSON retries transient failures only. Invalid data is left to the caller.
+func requestJSON(ctx context.Context, client *http.Client, endpoint string, q url.Values) (json.RawMessage, error) {
+	for attempt := 1; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"?"+q.Encode(), nil)
+		if err != nil {
+			return nil, fmt.Errorf("build request: %w", err)
+		}
+		req.Header.Set("User-Agent", userAgent)
+		resp, err := client.Do(req)
+		var body json.RawMessage
+		var retry bool
+		var retryAfter string
+		if err != nil {
+			retry = transientNetworkError(err)
+			err = fmt.Errorf("fetch: %w", err)
+		} else {
+			if resp.StatusCode != http.StatusOK {
+				err = fmt.Errorf("open-meteo status %d", resp.StatusCode)
+				retry = resp.StatusCode == http.StatusRequestTimeout || resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
+				retryAfter = resp.Header.Get("Retry-After")
+			} else if err = json.NewDecoder(resp.Body).Decode(&body); err != nil {
+				retry = transientNetworkError(err)
+				err = fmt.Errorf("decode: %w", err)
+			}
+			resp.Body.Close()
+		}
+		if err == nil {
+			return body, nil
+		}
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("open-meteo: %w", ctx.Err())
+		}
+		if !retry || attempt == requestAttempts {
+			return nil, fmt.Errorf("%s after %d attempt(s): %w", endpoint, attempt, err)
+		}
+		delay := retryDelay(retryAfter, (2*time.Second)<<uint(attempt-1))
+		log.Printf("Open-Meteo %s attempt %d/%d failed: %v; retrying in %s", endpoint, attempt, requestAttempts, err, delay)
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil, fmt.Errorf("open-meteo retry: %w", ctx.Err())
+		case <-timer.C:
+		}
+	}
+}
+
+func transientNetworkError(err error) bool {
+	var networkError net.Error
+	return errors.As(err, &networkError) && (networkError.Timeout() || networkError.Temporary()) ||
+		errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) ||
+		errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.ECONNREFUSED) ||
+		errors.Is(err, syscall.ECONNABORTED) || errors.Is(err, syscall.EPIPE)
+}
+
+// Retry-After can extend, but never shorten, the backoff delay.
+func retryDelay(header string, backoff time.Duration) time.Duration {
+	if seconds, err := strconv.Atoi(header); err == nil {
+		// Bound the conversion to avoid overflowing time.Duration.
+		if seconds > 0 && int64(seconds) <= int64((1<<63-1)/time.Second) {
+			return max(backoff, time.Duration(seconds)*time.Second)
+		}
+	} else if date, err := http.ParseTime(header); err == nil {
+		return max(backoff, time.Until(date))
+	}
+	return backoff
 }
 
 // toHours zips the weather arrays into local hourly points.
