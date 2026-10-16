@@ -44,8 +44,8 @@ type Thresholds struct {
 	ColdYellow              float64 // → Yellow
 	DewRed                  float64 // dew point at/above → Red
 	DewYellow               float64 // dew point at/above → Yellow (greasy friction)
-	AQIYellow               float64 // AQI above this value → Yellow
-	AQIRed                  float64 // AQI above this value → Red
+	AQIYellow               float64 // AQI at or above this value → Yellow
+	AQIRed                  float64 // AQI at or above this value → Red
 	WindRed                 float64 // wind at/above → Red
 	WindYellow              float64 // wind at/above → Yellow
 }
@@ -69,8 +69,8 @@ func DefaultThresholds() Thresholds {
 		DewRed:                  70, // Very humid: weather.gov/tbw/dewpoint. Product threshold, not a safety limit.
 		WindYellow:              25,
 		WindRed:                 35, // Within NWS advisory sustained-wind range: weather.gov/box/criteria.
-		AQIYellow:               50,
-		AQIRed:                  100,
+		AQIYellow:               100,
+		AQIRed:                  150,
 	}
 }
 
@@ -250,9 +250,9 @@ func metricGrades(w Window, p Profile, win string, t Thresholds) [6]Verdict {
 	}
 	if w.AQI != nil {
 		switch {
-		case *w.AQI > t.AQIRed:
+		case *w.AQI >= t.AQIRed:
 			grades[5] = Red
-		case *w.AQI > t.AQIYellow:
+		case *w.AQI >= t.AQIYellow:
 			grades[5] = Yellow
 		}
 	}

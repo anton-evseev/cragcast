@@ -26,7 +26,11 @@ func TestAQIGrades(t *testing.T) {
 		reason string
 	}{
 		{nil, Green, "good"}, {value(0), Green, "good"}, {value(50), Green, "good"},
-		{value(50.1), Yellow, "air quality"}, {value(100), Yellow, "air quality"}, {value(100.1), Red, "air quality"},
+		{value(50.1), Green, "good"}, {value(99.9), Green, "good"},
+		{value(100), Yellow, "air quality"},
+		{value(100.1), Yellow, "air quality"}, {value(101), Yellow, "air quality"},
+		{value(149), Yellow, "air quality"}, {value(149.9), Yellow, "air quality"},
+		{value(150), Red, "air quality"}, {value(151), Red, "air quality"},
 	} {
 		w := Window{Valid: true, TmaxF: 65, AQI: tc.aqi}
 		got := Score(w, p, "AM", DefaultThresholds())
@@ -206,14 +210,14 @@ func TestDedupAndBatchBoundary(t *testing.T) {
 }
 
 func TestAQIRenderingAndTies(t *testing.T) {
-	day := DayForecast{Date: time.Now(), AM: Window{Valid: true, TmaxF: 65, WindMaxMph: 30}, PM: Window{Valid: true, TmaxF: 65, AQI: value(75)}}
+	day := DayForecast{Date: time.Now(), AM: Window{Valid: true, TmaxF: 65, WindMaxMph: 30}, PM: Window{Valid: true, TmaxF: 65, AQI: value(125)}}
 	p := Profile{Aspect: "shade", DryoutInches: 1}
 	c := cells([]DayForecast{day}, p, DefaultThresholds())[0]
-	if c.Icon != "i-air" || !strings.Contains(c.PMData, ",75") {
+	if c.Icon != "i-air" || !strings.Contains(c.PMData, ",125") {
 		t.Fatal(c)
 	}
 	cd := cragDays([]DayForecast{day}, p, DefaultThresholds())[0]
-	if cd.Reason != "air quality" || cd.AQI != "75" {
+	if cd.Reason != "air quality" || cd.AQI != "125" {
 		t.Fatal(cd)
 	}
 	if got := areaIcon(Yellow, []string{"i-rain", "i-air"}, 0); got[0] != "i-air" {
@@ -234,8 +238,8 @@ func TestAQIRenderingAndTies(t *testing.T) {
 }
 
 func TestIndependentMetricWarnings(t *testing.T) {
-	// Mount Erie: rain is red while AQI 51 is independently yellow.
-	w := Window{Valid: true, TmaxF: 51, PrecipIn: 0.09, Antecedent: 0.17, AQI: value(51)}
+	// Rain is red while AQI 101 is independently yellow.
+	w := Window{Valid: true, TmaxF: 51, PrecipIn: 0.09, Antecedent: 0.17, AQI: value(101)}
 	p := Profile{Aspect: "shade", DryoutInches: 0.4}
 	th := DefaultThresholds()
 	r := Score(w, p, "AM", th)
@@ -259,7 +263,7 @@ func TestIndependentMetricWarnings(t *testing.T) {
 	if metricGrades(w, p, "AM", th)[5] != Green {
 		t.Fatal("missing AQI highlighted")
 	}
-	w.AQI = value(101)
+	w.AQI = value(150)
 	if metricGrades(w, p, "AM", th)[5] != Red {
 		t.Fatal("red AQI not highlighted")
 	}
