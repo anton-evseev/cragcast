@@ -71,6 +71,17 @@
         font-size: 13px;
         margin-top: 2px;
     }
+    .header-subline {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        margin-top: 2px;
+    }
+    .header-subline .tagline {
+        min-width: 0;
+        margin-top: 0;
+    }
     .updated {
         position: absolute;
         top: 0;
@@ -87,6 +98,31 @@
         border-radius: 50%;
         background: var(--go-fg);
     }
+
+    /* ---- forecast legend ---- */
+    .legend-colors {
+        display: flex;
+        flex-shrink: 0;
+        gap: 10px;
+        padding: 0;
+        margin: 0;
+        list-style: none;
+        font-size: 11px;
+        color: var(--text);
+    }
+    .legend-colors li {
+        display: flex;
+        align-items: center;
+        gap: 4px;
+    }
+    .legend-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+    }
+    .legend-dot.go { background: var(--go-fg); }
+    .legend-dot.warn { background: var(--warn-fg); }
+    .legend-dot.wet { background: var(--wet-fg); }
 
     /* ---- sticky day header ---- */
     .days {
@@ -453,6 +489,14 @@
     <symbol id="i-drop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 3.2s6 5.8 6 9.6a6 6 0 1 1-12 0c0-3.8 6-9.6 6-9.6z" />
     </symbol>
+    <symbol id="i-snow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2v20M3.34 7l17.32 10M3.34 17L20.66 7M9 4l3 3 3-3M9 20l3-3 3 3M3.57 10.6l4.1-1.1-1.1-4.1M17.43 18.6l-1.1-4.1 4.1-1.1M6.57 18.6l1.1-4.1-4.1-1.1M20.43 10.6l-4.1-1.1 1.1-4.1" />
+    </symbol>
+    <symbol id="i-unknown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 2-3 4" />
+        <circle cx="12" cy="17" r="1" fill="currentColor" stroke="none" />
+    </symbol>
     <symbol id="i-air" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <path d="M12 3L2 21h20zM12 9v5" />
         <circle cx="12" cy="17.5" r="1" fill="currentColor" stroke="none" />
@@ -486,8 +530,11 @@
         <div class="app">
             <header>
                 <div class="wordmark">Cragcast</div>
-                <div class="tagline">
-                    Climbing conditions within driving distance of {{.Region}}
+                <div class="header-subline">
+                    <div class="tagline">
+                        Climbing conditions within driving distance of {{.Region}}
+                    </div>
+                    {{template "legend-colors"}}
                 </div>
                 <div class="updated">
                     <span class="dot"></span>Updated {{.Updated}}

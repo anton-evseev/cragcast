@@ -30,8 +30,11 @@
                 <div class="wordmark">
                     <a href="/{{.RegionId}}">Cragcast</a>
                 </div>
-                <div class="tagline">
-                    {{.AreaName}} · {{.Drive}} drive from {{.Region}}
+                <div class="header-subline">
+                    <div class="tagline">
+                        {{.AreaName}} · {{.Drive}} drive from {{.Region}}
+                    </div>
+                    {{template "legend-colors"}}
                 </div>
                 <div class="updated">
                     <span class="dot"></span>Updated {{.Updated}}

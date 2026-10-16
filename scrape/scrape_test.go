@@ -79,3 +79,55 @@ func TestGreenWeatherIcons(t *testing.T) {
 		t.Fatalf("split cell label lost weather or warning: %q", cell.Label)
 	}
 }
+
+func TestWetRockIcon(t *testing.T) {
+	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	th := DefaultThresholds()
+	w := Window{Valid: true, TmaxF: 65, Antecedent: 0.4}
+	result := Score(w, p, "AM", th)
+	if result.Reason != "wet rock" || iconOf(result, w.CloudMean) != "i-drop" {
+		t.Fatalf("wet rock must use a droplet: %+v", result)
+	}
+	cell := cells([]DayForecast{{AM: w, PM: w}}, p, th)[0]
+	if cell.Icon != "i-drop" || cell.Class != "wet" {
+		t.Fatalf("wet rock cell: %+v", cell)
+	}
+	icons := areaIcon(Red, []string{cell.Icon}, 0)
+	if len(icons) != 1 || icons[0] != "i-drop" {
+		t.Fatalf("wet rock area: %v", icons)
+	}
+	w.PrecipIn = 0.1
+	result = Score(w, p, "AM", th)
+	if result.Reason != "rain forecast" || iconOf(result, w.CloudMean) != "i-rain" {
+		t.Fatalf("forecast rain must keep its rainy cloud: %+v", result)
+	}
+}
+
+func TestColdAndMissingDataIcons(t *testing.T) {
+	p := Profile{Aspect: "shade", DryoutInches: 1}
+	th := DefaultThresholds()
+	for _, tc := range []struct {
+		name string
+		w    Window
+		icon string
+	}{
+		{"cold", Window{Valid: true, TmaxF: 35}, "i-snow"},
+		{"too cold", Window{Valid: true, TmaxF: 25}, "i-snow"},
+		{"no data", Window{}, "i-unknown"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			r := Score(tc.w, p, "AM", th)
+			if r.Reason != tc.name || iconOf(r, 0) != tc.icon {
+				t.Fatalf("result %+v uses icon %q", r, iconOf(r, 0))
+			}
+			cell := cells([]DayForecast{{AM: tc.w, PM: tc.w}}, p, th)[0]
+			if cell.Icon != tc.icon {
+				t.Fatalf("area page cell uses %q", cell.Icon)
+			}
+			icons := areaIcon(r.Verdict, []string{cell.Icon}, 0)
+			if len(icons) != 1 || icons[0] != tc.icon {
+				t.Fatalf("region summary uses %v", icons)
+			}
+		})
+	}
+}

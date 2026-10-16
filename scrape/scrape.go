@@ -348,7 +348,7 @@ func areaIcon(av Verdict, cragIcons []string, cloudCover float64) []string {
 		icon, _ := skyCondition(cloudCover)
 		return []string{icon}
 	}
-	var sun, rain, drop, wind bool
+	var sun, rain, drop, wind, cold bool
 	for _, ic := range cragIcons {
 		if ic == "i-air" {
 			return []string{"i-air"}
@@ -364,6 +364,8 @@ func areaIcon(av Verdict, cragIcons []string, cloudCover float64) []string {
 			drop = true
 		case "i-wind":
 			wind = true
+		case "i-snow":
+			cold = true
 		}
 	}
 	wet := "i-drop"
@@ -381,8 +383,10 @@ func areaIcon(av Verdict, cragIcons []string, cloudCover float64) []string {
 		return []string{"i-drop"}
 	case wind:
 		return []string{"i-wind"}
+	case cold:
+		return []string{"i-snow"}
 	default:
-		return []string{"i-drop"}
+		return []string{"i-unknown"}
 	}
 }
 
@@ -395,16 +399,20 @@ func iconOf(r Result, cloudCover float64) string {
 		return "i-sun" // heat is the culprit, whether Yellow or Red
 	case r.Reason == "air quality":
 		return "i-air"
+	case r.Reason == "cold" || r.Reason == "too cold":
+		return "i-snow"
+	case r.Reason == "no data":
+		return "i-unknown"
 	case strings.HasPrefix(r.Reason, "rain "):
 		return "i-rain"
+	case r.Reason == "wet rock" || r.Reason == "drying":
+		return "i-drop"
 	case r.Reason == "humid" || r.Reason == "very humid":
 		return "i-drop"
 	case r.Reason == "windy" || r.Reason == "too windy":
 		return "i-wind"
-	case r.Verdict == Red:
-		return "i-rain"
-	default: // Other Yellow reasons use the drop
-		return "i-drop"
+	default:
+		return "i-unknown"
 	}
 }
 
