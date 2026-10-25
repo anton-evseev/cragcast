@@ -239,8 +239,12 @@ func TestAQIRenderingAndTies(t *testing.T) {
 	if err := web.Area(&area, web.AreaView{Crags: []web.CragView{{Cells: []web.Cell{c}}}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, html := range []string{region.String(), area.String()} {
-		if !strings.Contains(html, ">AQI</span>") || !strings.Contains(html, "CAMS") || !strings.Contains(html, "i-air") {
+	for _, page := range []struct {
+		html  string
+		label string
+	}{{region.String(), ">AQI</span>"}, {area.String(), "Air Quality Index"}} {
+		html := page.html
+		if !strings.Contains(html, page.label) || !strings.Contains(html, "CAMS") || !strings.Contains(html, "i-air") {
 			t.Fatal("missing AQI UI")
 		}
 	}
@@ -260,7 +264,7 @@ func TestIndependentMetricWarnings(t *testing.T) {
 		t.Fatal(grades)
 	}
 	data := strings.Split(windowData(w, r, grades), ",")
-	if len(data) != 7 || data[6] != "go|wet|go|warn" {
+	if len(data) != 13 || data[6] != "go|wet|go|warn" {
 		t.Fatal(data)
 	}
 	day := DayForecast{AM: w, PM: Window{Valid: true, TmaxF: 65, WindMaxMph: 30}}

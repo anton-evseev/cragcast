@@ -15,6 +15,7 @@ type Window struct {
 	AQI               *float64
 	Valid             bool
 	TmaxF             float64
+	HumidityMax       *float64 // peak relative humidity, only with complete window coverage
 	DewMaxF           float64
 	WindMaxMph        float64
 	PrecipIn          float64  // total rain in the window
@@ -54,7 +55,7 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 
 	w := Window{Antecedent: precipSum(hours, start.Add(-antecedentHrs*time.Hour), start)}
 	var cloudSum float64
-	var count int
+	var count, humidityCount int
 	probabilities := map[int64]float64{}
 	coverage := map[int64]int{}
 	for _, h := range hours {
@@ -76,12 +77,21 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 		w.TmaxF = max(w.TmaxF, h.TempF)
 		w.DewMaxF = max(w.DewMaxF, h.DewF)
 		w.WindMaxMph = max(w.WindMaxMph, h.WindMph)
+		if h.Humidity != nil {
+			if w.HumidityMax == nil || *h.Humidity > *w.HumidityMax {
+				w.HumidityMax = h.Humidity
+			}
+			humidityCount++
+		}
 		w.AQI = peakAQI(w.AQI, h.AQI)
 		cloudSum += h.Cloud
 		count++
 	}
 	if count > 0 {
 		w.CloudMean = cloudSum / float64(count)
+	}
+	if humidityCount != count {
+		w.HumidityMax = nil
 	}
 	peak := 0.0
 	complete := true

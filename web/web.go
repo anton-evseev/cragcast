@@ -123,7 +123,7 @@ type Cell struct {
 	Label string // aria-label
 
 	// Tap-to-expand detail, carried as compact data-* attributes and formatted
-	// client-side. Each window string is "class,reason,temp,wetness,wind,aqi,highlights".
+	// client-side. See windowData in scrape for the field order.
 	Day    string // panel header, e.g. "Wed, Jun 18"
 	AMData string
 	PMData string

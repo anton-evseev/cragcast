@@ -47,7 +47,7 @@ func TestProbabilityRainGrades(t *testing.T) {
 				t.Fatal("rain warning has wrong icon")
 			}
 			fields := strings.Split(windowData(w, score, grades), ",")
-			if len(fields) != 7 || fields[3] != tc.status || strings.Split(fields[6], "|")[1] != classOf(tc.grade) {
+			if len(fields) != 13 || fields[3] != tc.status || strings.Split(fields[6], "|")[1] != classOf(tc.grade) {
 				t.Fatal(fields)
 			}
 		})
@@ -72,7 +72,7 @@ func TestHumidityWetness(t *testing.T) {
 			t.Fatalf("dew=%v: got %+v, want %+v", tc.dew, got, tc.want)
 		}
 		fields := strings.Split(windowData(w, Score(w, p, "AM", th), grades), ",")
-		if len(fields) != 7 || fields[3] != tc.want.Reason || fields[6] != "go|"+classOf(tc.want.Verdict)+"|go|go" {
+		if len(fields) != 13 || fields[3] != tc.want.Reason || fields[6] != "go|"+classOf(tc.want.Verdict)+"|go|go" {
 			t.Fatal(fields)
 		}
 	}
@@ -124,7 +124,7 @@ func TestDailyHumidityWetness(t *testing.T) {
 		t.Fatal("equal priority must retain AM:", got)
 	}
 	fields := strings.Split(windowData(Window{}, Result{Yellow, "no data"}, [6]Verdict{}), ",")
-	if len(fields) != 7 {
+	if len(fields) != 13 {
 		t.Fatal(fields)
 	}
 }
@@ -243,6 +243,55 @@ func TestProbabilityParsing(t *testing.T) {
 			}
 			if tc.name == "null" && (hours[0].PrecipProbability != nil || hours[1].PrecipProbability == nil || *hours[1].PrecipProbability != 0) {
 				t.Fatal("null or zero probability lost")
+			}
+		})
+	}
+}
+
+func TestSeparateWetnessDetails(t *testing.T) {
+	w := Window{Valid: true, TmaxF: 65, PrecipIn: 0.004, PrecipProbability: value(60), Antecedent: 0.45, HumidityMax: value(85), DewMaxF: 61}
+	p, th := Profile{Aspect: "shade", DryoutInches: 0.4}, DefaultThresholds()
+	fields := strings.Split(windowData(w, Score(w, p, "AM", th), metricGrades(w, p, "AM", th)), ",")
+	if got := strings.Join(fields[7:], ","); got != "0.004,60,0.450,85,61,warn|wet|warn" {
+		t.Fatal("separate wetness values or highlights lost:", got)
+	}
+	w.PrecipProbability, w.HumidityMax = nil, nil
+	fields = strings.Split(windowData(w, Score(w, p, "AM", th), metricGrades(w, p, "AM", th)), ",")
+	if fields[8] != "" || fields[10] != "" {
+		t.Fatal("missing values became zero", fields)
+	}
+	fields = strings.Split(windowData(Window{}, Result{Yellow, "no data"}, [6]Verdict{}), ",")
+	for _, field := range fields[2:] {
+		if field != "" {
+			t.Fatal("missing window has measurements", fields)
+		}
+	}
+}
+
+func TestAreaHighlightsUseDisplayedMetrics(t *testing.T) {
+	p, th := Profile{Aspect: "shade", DryoutInches: 0.4}, DefaultThresholds()
+	for _, tc := range []struct {
+		name string
+		w    Window
+		want string
+	}{
+		{"zero amount with rain chance", Window{Valid: true, TmaxF: 65, PrecipIn: 0.0004, PrecipProbability: value(26)}, "go|go|go|go|go|go|go"},
+		{"rounded below cold threshold", Window{Valid: true, TmaxF: 36.4}, "warn|go|go|go|go|go|go"},
+		{"rounded wind dew and AQI thresholds", Window{Valid: true, TmaxF: 65, WindMaxMph: 24.9, DewMaxF: 59.9, AQI: value(99.9)}, "go|go|go|go|warn|warn|warn"},
+		{"rounded past precipitation", Window{Valid: true, TmaxF: 65, Antecedent: 0.1996}, "go|go|go|warn|go|go|go"},
+		{"rounded rain amount", Window{Valid: true, TmaxF: 65, PrecipIn: 0.0096, PrecipProbability: value(5)}, "go|warn|go|go|go|go|go"},
+		{"zero amount with high chance", Window{Valid: true, TmaxF: 65, PrecipProbability: value(90)}, "go|go|go|go|go|go|go"},
+		{"nonzero amount with chance", Window{Valid: true, TmaxF: 65, PrecipIn: 0.001, PrecipProbability: value(26)}, "go|go|warn|go|go|go|go"},
+		{"independent chance", Window{Valid: true, TmaxF: 65, PrecipIn: 0.001, PrecipProbability: value(59.9)}, "go|go|wet|go|go|go|go"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			before := Score(tc.w, p, "AM", th)
+			fields := strings.Split(areaWindowData(tc.w, p, "AM", th), ",")
+			if fields[13] != tc.want {
+				t.Fatalf("highlights %s, want %s", fields[13], tc.want)
+			}
+			if Score(tc.w, p, "AM", th) != before {
+				t.Fatal("display highlights changed forecast scoring")
 			}
 		})
 	}

@@ -21,6 +21,24 @@
         <title>{{.AreaName}} — climbing conditions within driving distance of {{.Region}} — Cragcast</title>
         <meta name="description" content="{{.Description}}" />
         {{template "styles"}}
+        <style>
+            .weather-details {
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+            }
+            .weather-details th, .weather-details td {
+                padding: 4px 2px;
+                text-align: center;
+            }
+            .weather-details th:first-child, .weather-details td:first-child {
+                width: 48%;
+                text-align: left;
+            }
+            .weather-details th { font-size: 12px; font-weight: 550; }
+            .weather-details thead th { font-weight: 700; }
+            .detail-note { margin: 8px 0 0; color: var(--muted); font-size: 11px; }
+        </style>
     </head>
     <body>
         {{template "icons"}}
@@ -86,23 +104,34 @@
                     c.setAttribute("aria-expanded", "false");
                 });
 
-                // win = "class,reason,temp,wetness,wind,aqi,highlights"; stats blank on
-                // no data. Rendered as grid cells (label, temp, wetness,
-                // wind, AQI) so AM and PM line up — the same columns the
-                // region page's crag list uses (see .crag-grid).
                 {{template "detail-metric"}}
 
-                function row(label, win) {
+                function values(win) {
                     var p = win.split(",");
-                    var grades = (p[6] || "").split("|");
-                    return (
-                        '<span class="cg-name ' + p[0] + '">' + label +
-                        '</span>' +
-                        metric(p[2], "°", grades[0]) +
-                        metric(p[3], "", grades[1], "cg-wetness") +
-                        metric(p[4], " mph", grades[2]) +
-                        metric(p[5], "", grades[3])
-                    );
+                    var grades = (p[13] || "").split("|");
+                    return [
+                        metric(p[2], "°F", grades[0]),
+                        metric(p[7], " in", grades[1]),
+                        metric(p[8], "%", grades[2]),
+                        metric(p[9], " in", grades[3]),
+                        metric(p[10], "%"),
+                        metric(p[11], "°F", grades[4]),
+                        metric(p[4], " mph", grades[5]),
+                        metric(p[5], "", grades[6])
+                    ];
+                }
+
+                function details(am, pm) {
+                    var morning = values(am), afternoon = values(pm);
+                    var labels = ["Temperature", "Precipitation", "Precipitation chance",
+                        "Past precipitation (72h)", "Humidity", "Dew point", "Wind", "Air Quality Index"];
+                    return '<table class="weather-details"><thead><tr><td></td>' +
+                        '<th scope="col">AM</th><th scope="col">PM</th></tr></thead><tbody>' +
+                        labels.map(function (label, i) {
+                            return '<tr><th scope="row">' + label + '</th><td>' +
+                                morning[i] + '</td><td>' + afternoon[i] + '</td></tr>';
+                        }).join("") + '</tbody></table>' +
+                        '<p class="detail-note">AM 7am–1pm · PM 1pm–7pm. Past precipitation covers the 72 hours before each window.<br>Temperature, humidity, dew point, wind, and chance show window peaks.</p>';
                 }
 
                 function close(restoreFocus) {
@@ -136,14 +165,7 @@
                     panel.innerHTML =
                         '<button type="button" class="detail-close" aria-label="Close details">×</button>' +
                         '<div class="detail-day">' + cell.dataset.day + "</div>" +
-                        '<div class="crag-grid"><span></span>' +
-                        '<span class="cg-head">temp</span>' +
-                        '<span class="cg-head cg-wetness">wetness</span>' +
-                        '<span class="cg-head">wind</span>' +
-                        '<span class="cg-head">AQI</span>' +
-                        row("AM", cell.dataset.am) +
-                        row("PM", cell.dataset.pm) +
-                        "</div>";
+                        details(cell.dataset.am, cell.dataset.pm);
                     panel.hidden = false;
                     cell.setAttribute("aria-expanded", "true");
                     active = cell;

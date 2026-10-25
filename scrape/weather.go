@@ -26,6 +26,7 @@ type Hour struct {
 	Precip            float64  // inches accumulated in the preceding hour
 	PrecipProbability *float64 // nil when precipitation probability is unavailable
 	WindMph           float64
+	Humidity          *float64 // relative humidity, percent; nil when unavailable
 	DewF              float64
 	AQI               *float64 // nil when air quality is unavailable
 	Cloud             float64  // cloud cover, percent 0–100
@@ -59,6 +60,7 @@ type omResponse struct {
 		Precip            []*float64 `json:"precipitation"`
 		PrecipProbability []*float64 `json:"precipitation_probability"`
 		Wind              []*float64 `json:"wind_speed_10m"`
+		Humidity          []*float64 `json:"relative_humidity_2m"`
 		DewPoint          []*float64 `json:"dew_point_2m"`
 		CloudCover        []*float64 `json:"cloud_cover"`
 	} `json:"hourly"`
@@ -98,7 +100,7 @@ func (o *OpenMeteo) FetchBatch(ctx context.Context, points []Coordinate, loc *ti
 		aq[key] = append([]string(nil), values...)
 	}
 	aq.Set("hourly", "us_aqi")
-	q.Set("hourly", "temperature_2m,precipitation,precipitation_probability,wind_speed_10m,dew_point_2m,cloud_cover")
+	q.Set("hourly", "temperature_2m,precipitation,precipitation_probability,wind_speed_10m,dew_point_2m,relative_humidity_2m,cloud_cover")
 	q.Set("temperature_unit", "fahrenheit")
 	q.Set("wind_speed_unit", "mph")
 	q.Set("precipitation_unit", "inch")
@@ -274,6 +276,9 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 	if len(raw.Hourly.PrecipProbability) != 0 && len(raw.Hourly.PrecipProbability) != n {
 		return nil, fmt.Errorf("open-meteo probability array misaligned")
 	}
+	if len(raw.Hourly.Humidity) != 0 && len(raw.Hourly.Humidity) != n {
+		return nil, fmt.Errorf("open-meteo humidity array misaligned")
+	}
 	hours := make([]Hour, 0, n)
 	for i := 0; i < n; i++ {
 		if raw.Hourly.Time[i] == nil {
@@ -303,6 +308,13 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 				return nil, fmt.Errorf("open-meteo probability outside 0–100")
 			}
 		}
+		var humidity *float64
+		if len(raw.Hourly.Humidity) != 0 {
+			humidity = raw.Hourly.Humidity[i]
+			if humidity != nil && (*humidity < 0 || *humidity > 100) {
+				return nil, fmt.Errorf("open-meteo humidity outside 0–100")
+			}
+		}
 		t := time.Unix(*raw.Hourly.Time[i], 0).In(loc)
 		hours = append(hours, Hour{
 			Time:              t,
@@ -310,6 +322,7 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 			Precip:            *raw.Hourly.Precip[i],
 			PrecipProbability: probability,
 			WindMph:           *raw.Hourly.Wind[i],
+			Humidity:          humidity,
 			DewF:              *raw.Hourly.DewPoint[i],
 			Cloud:             *raw.Hourly.CloudCover[i],
 		})

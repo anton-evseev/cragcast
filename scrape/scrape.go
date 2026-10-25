@@ -9,6 +9,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,8 +26,7 @@ type ScrapeOptions struct {
 }
 
 // cragDay is one crag's day collapsed to a single verdict (the worse of its two
-// windows) with its wetness status, day-high, wind, and AQI. These are the same columns the
-// crag subpage shows per window, so the region crag list reads as one with it.
+// windows) with its wetness status, day-high, wind, and AQI for the region page.
 type cragDay struct {
 	Verdict    Verdict
 	Reason     string
@@ -222,8 +222,8 @@ func cells(days []DayForecast, p Profile, th Thresholds) []web.Cell {
 		pm := Score(d.PM, p, "PM", th)
 		cell := web.Cell{
 			Day:    dayLabel(d.Date, i),
-			AMData: windowData(d.AM, am, metricGrades(d.AM, p, "AM", th)),
-			PMData: windowData(d.PM, pm, metricGrades(d.PM, p, "PM", th)),
+			AMData: areaWindowData(d.AM, p, "AM", th),
+			PMData: areaWindowData(d.PM, p, "PM", th),
 		}
 		if am.Verdict == pm.Verdict {
 			cell.Class = classOf(am.Verdict)
@@ -272,21 +272,72 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 }
 
 // windowData packs one window into the compact attribute string the client
-// formats: "class,reason,temp,wetness,wind,aqi,highlights". Numbers are pre-rounded
+// formats: "class,reason,temp,wetness,wind,aqi,highlights,precip,chance,past,humidity,dew,wetnessGrades".
+// Numbers are pre-rounded
 // (the client only appends units); a no-data window carries empty stat fields.
 // Reasons never contain commas, so a plain comma join is unambiguous.
 func windowData(w Window, r Result, grades [6]Verdict) string {
 	cls := classOf(r.Verdict)
 	if !w.Valid {
-		return cls + "," + r.Reason + ",,,,,"
+		return strings.Join(append([]string{cls, r.Reason}, make([]string, 11)...), ",")
 	}
 	aq := ""
 	if w.AQI != nil {
 		aq = fmt.Sprintf("%.0f", *w.AQI)
 	}
 	wetness := wetnessResult(w, grades)
-	return fmt.Sprintf("%s,%s,%.0f,%s,%.0f,%s,%s",
-		cls, r.Reason, w.TmaxF, wetness.Reason, w.WindMaxMph, aq, detailHighlights(grades, wetness))
+	chance, humidity := "", ""
+	if w.PrecipProbability != nil {
+		chance = fmt.Sprintf("%.0f", *w.PrecipProbability)
+	}
+	if w.HumidityMax != nil {
+		humidity = fmt.Sprintf("%.0f", *w.HumidityMax)
+	}
+	wetnessGrades := strings.Join([]string{classOf(grades[1]), classOf(grades[2]), classOf(grades[3])}, "|")
+	return fmt.Sprintf("%s,%s,%.0f,%s,%.0f,%s,%s,%.3f,%s,%.3f,%s,%.0f,%s",
+		cls, r.Reason, w.TmaxF, wetness.Reason, w.WindMaxMph, aq, detailHighlights(grades, wetness),
+		w.PrecipIn, chance, w.Antecedent, humidity, w.DewMaxF, wetnessGrades)
+}
+
+// areaWindowData adds independent numeric highlights to the area details.
+// Grade the same rounded numbers the user sees; keep forecast scoring separate.
+func areaWindowData(w Window, p Profile, win string, th Thresholds) string {
+	data := windowData(w, Score(w, p, win, th), metricGrades(w, p, win, th))
+	if !w.Valid {
+		return data + ","
+	}
+	rounded := func(value float64, decimals int) float64 {
+		n, _ := strconv.ParseFloat(strconv.FormatFloat(value, 'f', decimals, 64), 64)
+		return n
+	}
+	displayed := w
+	displayed.TmaxF = rounded(w.TmaxF, 0)
+	displayed.PrecipIn = rounded(w.PrecipIn, 3)
+	displayed.Antecedent = rounded(w.Antecedent, 3)
+	displayed.DewMaxF = rounded(w.DewMaxF, 0)
+	displayed.WindMaxMph = rounded(w.WindMaxMph, 0)
+	if w.AQI != nil {
+		aqi := rounded(*w.AQI, 0)
+		displayed.AQI = &aqi
+	}
+	// Amount and chance are separate metrics. Amount uses the existing
+	// amount-only thresholds. Chance warns only when the displayed amount is nonzero.
+	displayed.PrecipProbability = nil
+	profile := p
+	profile.Aspect = "shade" // Highlight air temperature without hidden solar gain.
+	grades := metricGrades(displayed, profile, win, th)
+	chance := Green
+	if displayed.PrecipIn > 0 && w.PrecipProbability != nil {
+		probability := rounded(*w.PrecipProbability, 0)
+		switch {
+		case probability >= th.RainLikelyProbability:
+			chance = Red
+		case probability >= th.RainPossibleProbability:
+			chance = Yellow
+		}
+	}
+	return data + "," + strings.Join([]string{classOf(grades[0]), classOf(grades[1]),
+		classOf(chance), classOf(grades[2]), classOf(grades[3]), classOf(grades[4]), classOf(grades[5])}, "|")
 }
 
 func detailHighlights(grades [6]Verdict, wetness Result) string {

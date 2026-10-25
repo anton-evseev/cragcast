@@ -136,3 +136,67 @@ func TestIncompleteWeatherPreservesPages(t *testing.T) {
 		t.Fatalf("failed scrape wrote files: %v %v", entries, err)
 	}
 }
+
+func TestHumidityParsing(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		values  []any
+		wantErr bool
+	}{
+		{"present", []any{0, 95}, false},
+		{"missing", nil, false},
+		{"null", []any{nil, 95}, false},
+		{"ragged", []any{95}, true},
+		{"out of range", []any{0, 101}, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			row := weatherRow([]int64{0, 3600}, 65)
+			row["hourly"].(map[string]any)["relative_humidity_2m"] = tc.values
+			data, err := json.Marshal(row)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var raw omResponse
+			if err := json.Unmarshal(data, &raw); err != nil {
+				t.Fatal(err)
+			}
+			hours, err := toHours(raw, time.UTC)
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if err != nil {
+				return
+			}
+			for i, h := range hours {
+				if tc.values == nil || tc.values[i] == nil {
+					if h.Humidity != nil {
+						t.Fatal("missing humidity became a measurement")
+					}
+				} else if h.Humidity == nil || *h.Humidity != float64(tc.values[i].(int)) {
+					t.Fatalf("humidity not preserved: %+v", h)
+				}
+			}
+		})
+	}
+}
+
+func TestWindowHumidity(t *testing.T) {
+	date := time.Date(2026, 10, 25, 0, 0, 0, 0, time.UTC)
+	var hours []Hour
+	for ts := date.Add(-72 * time.Hour); !ts.After(date.Add(19 * time.Hour)); ts = ts.Add(time.Hour) {
+		hours = append(hours, Hour{Time: ts, TempF: 65, Humidity: value(float64(ts.Hour()))})
+	}
+	day := Aggregate(hours, time.UTC, date, 1)[0]
+	if !day.AM.Valid || day.AM.HumidityMax == nil || *day.AM.HumidityMax != 12 || *day.PM.HumidityMax != 18 {
+		t.Fatalf("incorrect window humidity: %+v", day)
+	}
+	for i := range hours {
+		if hours[i].Time.Equal(date.Add(8 * time.Hour)) {
+			hours[i].Humidity = nil
+		}
+	}
+	day = Aggregate(hours, time.UTC, date, 1)[0]
+	if !day.AM.Valid || day.AM.HumidityMax != nil || day.PM.HumidityMax == nil {
+		t.Fatal("partial humidity should be missing without invalidating weather")
+	}
+}
