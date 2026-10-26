@@ -1,6 +1,9 @@
 package scrape
 
-import "strings"
+import (
+	"strings"
+	"time"
+)
 
 // Verdict is the single per-window rating.
 type Verdict int
@@ -74,37 +77,156 @@ func DefaultThresholds() Thresholds {
 	}
 }
 
-// Score is the heart of the app: pure function from aggregated window + crag
-// profile to a verdict. Optional AQI can worsen the weather verdict.
+// Score summarizes six hourly weather ratings, with the existing window-level
+// rain and drying result as a conservative minimum severity.
 func Score(w Window, p Profile, win string, t Thresholds) Result {
-	if !w.Valid {
-		return Result{Yellow, "no data"}
+	return Explain(w, p, win, t).Result
+}
+
+// Explanation is the evidence behind a window rating, so the details can show
+// exactly what limited it instead of independently graded extremes.
+type Explanation struct {
+	Result
+	Hours  string   // when the limiting condition occurs, e.g. "until 10am"; empty for the whole window
+	FeelsF *float64 // sun-adjusted extreme behind a temperature rating
+	TempF  float64  // air temperature in the hour of FeelsF
+}
+
+// Explain scores a window from its hourly observations and records which
+// hours and measurement determined the rating.
+func Explain(w Window, p Profile, win string, t Thresholds) Explanation {
+	if !w.Valid || len(w.hours) != 6 {
+		return Explanation{Result: Result{Yellow, "no data"}}
 	}
-	grades := metricGrades(w, p, win, t)
-	wetness := rainDryingResult(w, grades)
-	result := Result{Green, "good"}
-	// Preserve weather reason priority while selecting the worst metric grade.
-	for _, severity := range []Verdict{Red, Yellow} {
-		for _, metric := range []int{1, 0, 3, 4} {
-			grade := grades[metric]
-			if metric == 1 {
-				grade = wetness.Verdict
+	var ratings []Result
+	var goodRun, longestGood, poor int
+	for i, h := range w.hours {
+		if i > 0 && h.Time.Sub(w.hours[i-1].Time) != time.Hour {
+			return Explanation{Result: Result{Yellow, "no data"}}
+		}
+		r := scoreHour(h, p, win, t)
+		ratings = append(ratings, r)
+		if r.Verdict == Green {
+			goodRun++
+			longestGood = max(longestGood, goodRun)
+		} else {
+			goodRun = 0
+		}
+		if r.Verdict == Red {
+			poor++
+		}
+	}
+	result := dominantReason(ratings)
+	switch {
+	case longestGood >= 4 && poor == 0:
+		result = Result{Green, "good"}
+	case poor >= 4:
+		result.Verdict = Red
+	default:
+		result.Verdict = Yellow
+	}
+	wetness := rainDryingResult(w, metricGrades(w, p, win, t))
+	if wetness.Verdict != Green && wetness.Verdict >= result.Verdict {
+		return Explanation{Result: wetness}
+	}
+	e := Explanation{Result: result}
+	if result.Verdict == Green {
+		return e
+	}
+	first, last := -1, -1
+	for i, r := range ratings {
+		if r.Verdict != Green && reasonMetric(r.Reason) == reasonMetric(result.Reason) {
+			if first < 0 {
+				first = i
 			}
-			if grade != severity {
+			last = i
+		}
+	}
+	e.Hours = hourSpan(w.hours, first, last)
+	if reasonMetric(result.Reason) == MetricTemp {
+		hot := strings.HasSuffix(result.Reason, "hot")
+		for _, h := range w.hours[first : last+1] {
+			eff := h.TempF + sunFactor(p.Aspect, win)*t.MaxSolarGain*(1-h.Cloud/100)
+			if e.FeelsF == nil || hot && eff > *e.FeelsF || !hot && eff < *e.FeelsF {
+				e.FeelsF, e.TempF = &eff, h.TempF
+			}
+		}
+	}
+	return e
+}
+
+// hourSpan names the local hours from first through last, or "" when they
+// cover the whole window.
+func hourSpan(hours []Hour, first, last int) string {
+	if first < 0 || first == 0 && last == len(hours)-1 {
+		return ""
+	}
+	clock := func(t time.Time) string { return t.Format("3pm") }
+	end := hours[last].Time.Add(time.Hour)
+	switch {
+	case first == 0:
+		return "until " + clock(end)
+	case last == len(hours)-1:
+		return "after " + clock(hours[first].Time)
+	default:
+		return clock(hours[first].Time) + "–" + clock(end)
+	}
+}
+
+// Metric is a detail measurement that can explain a rating.
+type Metric int
+
+const (
+	MetricNone Metric = iota
+	MetricTemp
+	MetricRain
+	MetricPastRain
+	MetricDew
+	MetricWind
+	MetricAQI
+)
+
+func reasonMetric(reason string) Metric {
+	switch {
+	case reason == "hot" || reason == "too hot" || reason == "cold" || reason == "too cold":
+		return MetricTemp
+	case strings.HasPrefix(reason, "rain "):
+		return MetricRain
+	case reason == "drying" || reason == "wet rock":
+		return MetricPastRain
+	case reason == "humid" || reason == "very humid":
+		return MetricDew
+	case reason == "windy" || reason == "too windy":
+		return MetricWind
+	case reason == "air quality":
+		return MetricAQI
+	default:
+		return MetricNone
+	}
+}
+
+// scoreHour uses simultaneous observations. Rain and drying are deliberately
+// excluded here: their thresholds still describe the entire climbing window.
+func scoreHour(h Hour, p Profile, win string, t Thresholds) Result {
+	w := Window{Valid: true, TmaxF: h.TempF, DewMaxF: h.DewF,
+		WindMaxMph: h.WindMph, CloudMean: h.Cloud, AQI: h.AQI}
+	grades := metricGrades(w, p, win, t)
+	result := Result{Green, "good"}
+	for _, severity := range []Verdict{Red, Yellow} {
+		for _, metric := range []int{5, 0, 3, 4} {
+			if grades[metric] != severity {
 				continue
 			}
 			reason := ""
 			switch metric {
 			case 0:
 				reason = "cold"
-				if w.TmaxF >= t.HotFloor {
+				if h.TempF >= t.HotFloor {
 					reason = "hot"
 				}
 				if severity == Red {
 					reason = "too " + reason
 				}
-			case 1:
-				reason = wetness.Reason
 			case 3:
 				reason = "humid"
 				if severity == Red {
@@ -115,18 +237,71 @@ func Score(w Window, p Profile, win string, t Thresholds) Result {
 				if severity == Red {
 					reason = "too windy"
 				}
+			case 5:
+				reason = "air quality"
 			}
-			result = Result{severity, reason}
-			break
+			return Result{severity, reason}
 		}
-		if result.Verdict != Green {
-			break
-		}
-	}
-	if grades[5] != Green {
-		result = worseResult(result, Result{grades[5], "air quality"})
 	}
 	return result
+}
+
+// dominantReason chooses frequency, then severity, then the existing metric
+// priority. Iteration order preserves the earliest occurrence for remaining ties.
+func dominantReason(ratings []Result) Result {
+	counts := map[Result]int{}
+	for _, r := range ratings {
+		if r.Verdict != Green {
+			counts[r]++
+		}
+	}
+	best := Result{Green, "good"}
+	for _, r := range ratings {
+		if r.Verdict == Green {
+			continue
+		}
+		if counts[r] > counts[best] || counts[r] == counts[best] &&
+			(r.Verdict > best.Verdict || r.Verdict == best.Verdict && reasonPriority(r.Reason) < reasonPriority(best.Reason)) {
+			best = r
+		}
+	}
+	return best
+}
+
+func reasonPriority(reason string) int {
+	switch reason {
+	case "air quality":
+		return 0
+	case "hot", "too hot", "cold", "too cold":
+		return 1
+	case "humid", "very humid":
+		return 2
+	default:
+		return 3 // wind
+	}
+}
+
+// conditionSummary is shared by the expanded Conditions row and cell labels.
+func conditionSummary(r Result) string {
+	switch {
+	case r.Reason == "no data":
+		return "No data"
+	case r.Verdict == Green:
+		return "Good"
+	case r.Verdict == Yellow:
+		return "Marginal · " + r.Reason
+	default:
+		return "Poor · " + r.Reason
+	}
+}
+
+// explanationSummary adds when the limiting condition occurs.
+func explanationSummary(e Explanation) string {
+	text := conditionSummary(e.Result)
+	if e.Verdict != Green && e.Hours != "" {
+		text += " " + e.Hours
+	}
+	return text
 }
 
 // worseResult prefers air quality on ties, then rain over drying.

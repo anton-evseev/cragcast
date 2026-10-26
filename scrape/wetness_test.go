@@ -31,7 +31,7 @@ func TestProbabilityRainGrades(t *testing.T) {
 		{"missing red", 0.02, nil, Red, "rain forecast"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			w := Window{Valid: true, TmaxF: 65, PrecipIn: tc.amount, PrecipProbability: tc.probability}
+			w := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: tc.amount, PrecipProbability: tc.probability})
 			p := Profile{Aspect: "shade", DryoutInches: 0.4}
 			th := DefaultThresholds()
 			grades := metricGrades(w, p, "AM", th)
@@ -66,7 +66,7 @@ func TestHumidityWetness(t *testing.T) {
 		{69.9, Result{Yellow, "humid"}},
 		{70, Result{Red, "very humid"}},
 	} {
-		w := Window{Valid: true, TmaxF: 75, DewMaxF: tc.dew}
+		w := steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: tc.dew})
 		grades := metricGrades(w, p, "AM", th)
 		if got := wetnessResult(w, grades); got != tc.want {
 			t.Fatalf("dew=%v: got %+v, want %+v", tc.dew, got, tc.want)
@@ -76,7 +76,7 @@ func TestHumidityWetness(t *testing.T) {
 			t.Fatal(fields)
 		}
 	}
-	w := Window{Valid: true, TmaxF: 75, DewMaxF: 70, PrecipIn: 0.01, Antecedent: 0.2}
+	w := steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70, PrecipIn: 0.01, Antecedent: 0.2})
 	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got != (Result{Red, "very humid"}) {
 		t.Fatal(got)
 	}
@@ -94,7 +94,7 @@ func TestHumidityWetness(t *testing.T) {
 	}
 	// Combining the displayed metrics must not move humidity ahead of heat
 	// in the overall score or change its icon.
-	w = Window{Valid: true, TmaxF: 95, DewMaxF: 70}
+	w = steadyWindow(Window{Valid: true, TmaxF: 95, DewMaxF: 70})
 	if got := Score(w, p, "AM", th); got != (Result{Red, "too hot"}) || iconOf(got, w.CloudMean) != "i-sun" {
 		t.Fatal(got)
 	}
@@ -107,13 +107,13 @@ func TestDailyHumidityWetness(t *testing.T) {
 		am, pm Window
 		want   Result
 	}{
-		{Window{Valid: true, TmaxF: 75}, Window{Valid: true, TmaxF: 75, DewMaxF: 70}, Result{Red, "very humid"}},
-		{Window{Valid: true, TmaxF: 75, DewMaxF: 60}, Window{Valid: true, TmaxF: 75, Antecedent: 0.2}, Result{Yellow, "drying"}},
-		{Window{Valid: true, TmaxF: 75, Antecedent: 0.2}, Window{Valid: true, TmaxF: 75, DewMaxF: 60}, Result{Yellow, "drying"}},
-		{Window{Valid: true, TmaxF: 75, DewMaxF: 70}, Window{Valid: true, TmaxF: 75, PrecipIn: 0.02}, Result{Red, "rain forecast"}},
-		{Window{}, Window{Valid: true, TmaxF: 75, DewMaxF: 60}, Result{Yellow, "humid"}},
-		{Window{Valid: true, TmaxF: 75}, Window{}, Result{Green, "dry"}},
-		{Window{}, Window{}, Result{Yellow, "—"}},
+		{steadyWindow(Window{Valid: true, TmaxF: 75}), steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70}), Result{Red, "very humid"}},
+		{steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), steadyWindow(Window{Valid: true, TmaxF: 75, Antecedent: 0.2}), Result{Yellow, "drying"}},
+		{steadyWindow(Window{Valid: true, TmaxF: 75, Antecedent: 0.2}), steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), Result{Yellow, "drying"}},
+		{steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70}), steadyWindow(Window{Valid: true, TmaxF: 75, PrecipIn: 0.02}), Result{Red, "rain forecast"}},
+		{Window{}, steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), Result{Yellow, "humid"}},
+		{steadyWindow(Window{Valid: true, TmaxF: 75}), Window{}, Result{Green, "dry"}},
+		{Window{}, Window{}, Result{Green, "—"}}, // no data: nothing to highlight
 	} {
 		cd := cragDays([]DayForecast{{AM: tc.am, PM: tc.pm}}, p, th)[0]
 		if cd.Wetness != tc.want.Reason || strings.Split(cd.Highlights, "|")[1] != classOf(tc.want.Verdict) {
@@ -132,7 +132,7 @@ func TestDailyHumidityWetness(t *testing.T) {
 func TestWetnessPrecedence(t *testing.T) {
 	p := Profile{Aspect: "shade", DryoutInches: 0.4}
 	th := DefaultThresholds()
-	w := Window{Valid: true, TmaxF: 65, PrecipIn: 0.1, PrecipProbability: value(40), Antecedent: 0.4}
+	w := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.1, PrecipProbability: value(40), Antecedent: 0.4})
 	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "wet rock" {
 		t.Fatal(got)
 	}
@@ -145,8 +145,8 @@ func TestWetnessPrecedence(t *testing.T) {
 	if got := Score(w, p, "AM", th); got.Reason != "rain likely" {
 		t.Fatal(got)
 	}
-	am := Window{Valid: true, TmaxF: 65, Antecedent: 0.4}
-	pm := Window{Valid: true, TmaxF: 65, PrecipIn: 0.1, PrecipProbability: value(60)}
+	am := steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.4})
+	pm := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.1, PrecipProbability: value(60)})
 	day := cragDays([]DayForecast{{AM: am, PM: pm}}, p, th)[0]
 	if day.Wetness != "rain likely" || day.Reason != "rain likely" || strings.Split(day.Highlights, "|")[1] != "wet" {
 		t.Fatal(day)
@@ -249,7 +249,7 @@ func TestProbabilityParsing(t *testing.T) {
 }
 
 func TestSeparateWetnessDetails(t *testing.T) {
-	w := Window{Valid: true, TmaxF: 65, PrecipIn: 0.004, PrecipProbability: value(60), Antecedent: 0.45, HumidityMax: value(85), DewMaxF: 61}
+	w := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.004, PrecipProbability: value(60), Antecedent: 0.45, HumidityMax: value(85), DewMaxF: 61})
 	p, th := Profile{Aspect: "shade", DryoutInches: 0.4}, DefaultThresholds()
 	fields := strings.Split(windowData(w, Score(w, p, "AM", th), metricGrades(w, p, "AM", th)), ",")
 	if got := strings.Join(fields[7:], ","); got != "0.004,60,0.450,85,61,warn|wet|warn" {
@@ -268,30 +268,48 @@ func TestSeparateWetnessDetails(t *testing.T) {
 	}
 }
 
-func TestAreaHighlightsUseDisplayedMetrics(t *testing.T) {
+func TestAreaHighlightsExplainRating(t *testing.T) {
 	p, th := Profile{Aspect: "shade", DryoutInches: 0.4}, DefaultThresholds()
+	cold := steadyWindow(Window{Valid: true, TmaxF: 44, TminF: 33})
+	for i := range 3 {
+		cold.hours[i].TempF = 33
+	}
 	for _, tc := range []struct {
-		name string
-		w    Window
-		want string
+		name, temp, precip, want, summary string
+		w                                 Window
+		aspect                            string
 	}{
-		{"zero amount with rain chance", Window{Valid: true, TmaxF: 65, PrecipIn: 0.0004, PrecipProbability: value(26)}, "go|go|go|go|go|go|go"},
-		{"rounded below cold threshold", Window{Valid: true, TmaxF: 36.4}, "warn|go|go|go|go|go|go"},
-		{"rounded wind dew and AQI thresholds", Window{Valid: true, TmaxF: 65, WindMaxMph: 24.9, DewMaxF: 59.9, AQI: value(99.9)}, "go|go|go|go|warn|warn|warn"},
-		{"rounded past precipitation", Window{Valid: true, TmaxF: 65, Antecedent: 0.1996}, "go|go|go|warn|go|go|go"},
-		{"rounded rain amount", Window{Valid: true, TmaxF: 65, PrecipIn: 0.0096, PrecipProbability: value(5)}, "go|warn|go|go|go|go|go"},
-		{"zero amount with high chance", Window{Valid: true, TmaxF: 65, PrecipProbability: value(90)}, "go|go|go|go|go|go|go"},
-		{"nonzero amount with chance", Window{Valid: true, TmaxF: 65, PrecipIn: 0.001, PrecipProbability: value(26)}, "go|go|warn|go|go|go|go"},
-		{"independent chance", Window{Valid: true, TmaxF: 65, PrecipIn: 0.001, PrecipProbability: value(59.9)}, "go|go|wet|go|go|go|go"},
+		// A trace at low chance rates Good, so nothing may be highlighted.
+		{"trace rain at low chance", "65°F", "trace", "go|go|go|go|go|go|go", "Good",
+			steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.012, PrecipProbability: value(8)}), ""},
+		// A cold start must show in the range, the highlight and the reason.
+		{"cold early under a warm high", "33–44°F", "0 in", "warn|go|go|go|go|go|go", "Marginal · cold until 10am", cold, ""},
+		{"rain", "65°F", "0.20 in", "go|wet|wet|go|go|go|go", "Poor · rain likely",
+			steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.2, PrecipProbability: value(80)}), ""},
+		{"chance without amount", "65°F", "0 in", "go|go|warn|go|go|go|go", "Marginal · rain possible",
+			steadyWindow(Window{Valid: true, TmaxF: 65, PrecipProbability: value(30)}), ""},
+		{"drying", "65°F", "0 in", "go|go|go|warn|go|go|go", "Marginal · drying",
+			steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.2}), ""},
+		{"humid", "65°F", "0 in", "go|go|go|go|warn|go|go", "Marginal · humid",
+			steadyWindow(Window{Valid: true, TmaxF: 65, DewMaxF: 60}), ""},
+		{"wind ignores lesser AQI", "65°F", "0 in", "go|go|go|go|go|wet|go", "Poor · too windy",
+			steadyWindow(Window{Valid: true, TmaxF: 65, WindMaxMph: 40, AQI: value(110)}), ""},
+		{"hot in sun", "85°F · feels 99°F in sun", "0 in", "wet|go|go|go|go|go|go", "Poor · too hot",
+			steadyWindow(Window{Valid: true, TmaxF: 85}), "sun all day"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			before := Score(tc.w, p, "AM", th)
-			fields := strings.Split(areaWindowData(tc.w, p, "AM", th), ",")
-			if fields[13] != tc.want {
-				t.Fatalf("highlights %s, want %s", fields[13], tc.want)
+			prof := p
+			if tc.aspect != "" {
+				prof.Aspect = tc.aspect
 			}
-			if Score(tc.w, p, "AM", th) != before {
-				t.Fatal("display highlights changed forecast scoring")
+			fields := strings.Split(areaWindowData(tc.w, prof, "AM", th), ",")
+			if fields[2] != tc.temp || fields[7] != tc.precip || fields[13] != tc.want || fields[14] != tc.summary {
+				t.Fatalf("temp %q precip %q highlights %s summary %q", fields[2], fields[7], fields[13], fields[14])
+			}
+			// Every non-green rating must highlight something visible; green, nothing.
+			highlighted := strings.Contains(fields[13], "warn") || strings.Contains(fields[13], "wet")
+			if highlighted != (fields[0] != "go") {
+				t.Fatalf("rating %s with highlights %s", fields[0], fields[13])
 			}
 		})
 	}

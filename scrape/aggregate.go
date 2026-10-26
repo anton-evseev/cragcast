@@ -1,6 +1,9 @@
 package scrape
 
-import "time"
+import (
+	"slices"
+	"time"
+)
 
 // Climbing-day window boundaries, local hours.
 const (
@@ -12,8 +15,10 @@ const (
 // Window is one day-half, aggregated. Each variable uses the operation that
 // preserves the signal the verdict cares about (max temp, summed precip, etc.).
 type Window struct {
+	hours             []Hour // chronological observations for duration-based scoring
 	AQI               *float64
 	Valid             bool
+	TminF             float64
 	TmaxF             float64
 	HumidityMax       *float64 // peak relative humidity, only with complete window coverage
 	DewMaxF           float64
@@ -70,10 +75,12 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 		if h.Time.Before(start) || !h.Time.Before(end) {
 			continue
 		}
+		w.hours = append(w.hours, h)
 		if !w.Valid { // first hour in window — seed the maxes
 			w.Valid = true
-			w.TmaxF, w.DewMaxF, w.WindMaxMph = h.TempF, h.DewF, h.WindMph
+			w.TminF, w.TmaxF, w.DewMaxF, w.WindMaxMph = h.TempF, h.TempF, h.DewF, h.WindMph
 		}
+		w.TminF = min(w.TminF, h.TempF)
 		w.TmaxF = max(w.TmaxF, h.TempF)
 		w.DewMaxF = max(w.DewMaxF, h.DewF)
 		w.WindMaxMph = max(w.WindMaxMph, h.WindMph)
@@ -114,6 +121,9 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 			break
 		}
 	}
+	// Continuity is meaningful only in chronological order, even for callers
+	// that supply an unordered series.
+	slices.SortFunc(w.hours, func(a, b Hour) int { return a.Time.Compare(b.Time) })
 	return w
 }
 

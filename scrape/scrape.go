@@ -7,9 +7,9 @@ import (
 	"fmt"
 	"html/template"
 	"log"
+	"math"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
@@ -250,20 +250,27 @@ func cells(days []DayForecast, p Profile, th Thresholds) []web.Cell {
 func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 	out := make([]cragDay, 0, len(days))
 	for _, d := range days {
-		am := Score(d.AM, p, "AM", th)
-		pm := Score(d.PM, p, "PM", th)
-		limiting := worseResult(am, pm)
+		am := Explain(d.AM, p, "AM", th)
+		pm := Explain(d.PM, p, "PM", th)
+		limiting := worseResult(am.Result, pm.Result)
 		grades := metricGrades(d.AM, p, "AM", th)
 		pmGrades := metricGrades(d.PM, p, "PM", th)
 		wetness := worseWetness(wetnessResult(d.AM, grades), wetnessResult(d.PM, pmGrades))
-		for i := range grades {
-			grades[i] = max(grades[i], pmGrades[i])
-		}
-		cd := cragDay{CloudMean: dayCloudCover(d), Highlights: detailHighlights(grades, wetness), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Wetness: wetness.Reason, Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
+		cd := cragDay{CloudMean: dayCloudCover(d), Highlights: dayHighlights(am.Result, pm.Result), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Wetness: wetness.Reason, Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
 		if d.AM.Valid || d.PM.Valid {
 			cd.Valid = true
 			cd.HighF = max(d.AM.TmaxF, d.PM.TmaxF)
 			cd.Temp = fmt.Sprintf("%.0f°", cd.HighF)
+			if limiting.Reason == "cold" || limiting.Reason == "too cold" {
+				// The low is what made it cold; the high would contradict the warning.
+				low := math.Inf(1)
+				for _, w := range []Window{d.AM, d.PM} {
+					if w.Valid {
+						low = min(low, w.TminF)
+					}
+				}
+				cd.Temp = fmt.Sprintf("%.0f°", low)
+			}
 			cd.Wind = fmt.Sprintf("%.0f mph", max(d.AM.WindMaxMph, d.PM.WindMaxMph))
 		}
 		out = append(out, cd)
@@ -299,45 +306,95 @@ func windowData(w Window, r Result, grades [6]Verdict) string {
 		w.PrecipIn, chance, w.Antecedent, humidity, w.DewMaxF, wetnessGrades)
 }
 
-// areaWindowData adds independent numeric highlights to the area details.
-// Grade the same rounded numbers the user sees; keep forecast scoring separate.
+// areaWindowData appends the area-details fields to windowData: the
+// temperature range, the displayed precipitation, highlights for only the
+// measurements that explain the rating, and the rating's explanation.
 func areaWindowData(w Window, p Profile, win string, th Thresholds) string {
-	data := windowData(w, Score(w, p, win, th), metricGrades(w, p, win, th))
+	e := Explain(w, p, win, th)
+	data := windowData(w, e.Result, metricGrades(w, p, win, th))
 	if !w.Valid {
-		return data + ","
+		return data + ",," + explanationSummary(e)
 	}
-	rounded := func(value float64, decimals int) float64 {
-		n, _ := strconv.ParseFloat(strconv.FormatFloat(value, 'f', decimals, 64), 64)
-		return n
+	fields := strings.Split(data, ",")
+	fields[2] = temperatureRange(w, e)
+	fields[7] = formatPrecip(w.PrecipIn)
+	cls := classOf(e.Verdict)
+	rows := strings.Split("go|go|go|go|go|go|go", "|") // temp, precip, chance, past, dew, wind, aqi
+	switch reasonMetric(e.Reason) {
+	case MetricTemp:
+		rows[0] = cls
+	case MetricRain:
+		if fields[7] != "0 in" || w.PrecipProbability == nil {
+			rows[1] = cls
+		}
+		if w.PrecipProbability != nil {
+			rows[2] = cls
+		}
+	case MetricPastRain:
+		rows[3] = cls
+	case MetricDew:
+		rows[4] = cls
+	case MetricWind:
+		rows[5] = cls
+	case MetricAQI:
+		rows[6] = cls
 	}
-	displayed := w
-	displayed.TmaxF = rounded(w.TmaxF, 0)
-	displayed.PrecipIn = rounded(w.PrecipIn, 3)
-	displayed.Antecedent = rounded(w.Antecedent, 3)
-	displayed.DewMaxF = rounded(w.DewMaxF, 0)
-	displayed.WindMaxMph = rounded(w.WindMaxMph, 0)
-	if w.AQI != nil {
-		aqi := rounded(*w.AQI, 0)
-		displayed.AQI = &aqi
+	return strings.Join(fields, ",") + "," + strings.Join(rows, "|") + "," + explanationSummary(e)
+}
+
+// temperatureRange shows the window's low–high, plus the sun-adjusted
+// temperature when solar gain is what pushed it over a threshold.
+func temperatureRange(w Window, e Explanation) string {
+	text := fmt.Sprintf("%.0f–%.0f°F", w.TminF, w.TmaxF)
+	if fmt.Sprintf("%.0f", w.TminF) == fmt.Sprintf("%.0f", w.TmaxF) {
+		text = fmt.Sprintf("%.0f°F", w.TmaxF)
 	}
-	// Amount and chance are separate metrics. Amount uses the existing
-	// amount-only thresholds. Chance warns only when the displayed amount is nonzero.
-	displayed.PrecipProbability = nil
-	profile := p
-	profile.Aspect = "shade" // Highlight air temperature without hidden solar gain.
-	grades := metricGrades(displayed, profile, win, th)
-	chance := Green
-	if displayed.PrecipIn > 0 && w.PrecipProbability != nil {
-		probability := rounded(*w.PrecipProbability, 0)
-		switch {
-		case probability >= th.RainLikelyProbability:
-			chance = Red
-		case probability >= th.RainPossibleProbability:
-			chance = Yellow
+	if e.FeelsF != nil && math.Abs(*e.FeelsF-e.TempF) >= 1 {
+		text += fmt.Sprintf(" · feels %.0f°F in sun", *e.FeelsF)
+	}
+	return text
+}
+
+// formatPrecip hides model noise: amounts that round below 0.02 in read "trace".
+func formatPrecip(in float64) string {
+	switch {
+	case in < 0.005:
+		return "0 in"
+	case in < 0.015:
+		return "trace"
+	default:
+		return fmt.Sprintf("%.2f in", in)
+	}
+}
+
+// dayHighlights marks the crag-list columns (temp, wetness, wind, AQI) that
+// explain either window's rating, and nothing else.
+func dayHighlights(results ...Result) string {
+	var cols [4]Verdict
+	for _, r := range results {
+		if r.Verdict == Green {
+			continue
+		}
+		col := -1
+		switch reasonMetric(r.Reason) {
+		case MetricTemp:
+			col = 0
+		case MetricRain, MetricPastRain, MetricDew:
+			col = 1
+		case MetricWind:
+			col = 2
+		case MetricAQI:
+			col = 3
+		}
+		if col >= 0 {
+			cols[col] = max(cols[col], r.Verdict)
 		}
 	}
-	return data + "," + strings.Join([]string{classOf(grades[0]), classOf(grades[1]),
-		classOf(chance), classOf(grades[2]), classOf(grades[3]), classOf(grades[4]), classOf(grades[5])}, "|")
+	out := make([]string, len(cols))
+	for i, v := range cols {
+		out[i] = classOf(v)
+	}
+	return strings.Join(out, "|")
 }
 
 func detailHighlights(grades [6]Verdict, wetness Result) string {
@@ -415,7 +472,7 @@ func areaIcon(av Verdict, cragIcons []string, cloudCover float64) []string {
 			drop = true
 		case "i-wind":
 			wind = true
-		case "i-snow":
+		case "i-cold":
 			cold = true
 		}
 	}
@@ -435,7 +492,7 @@ func areaIcon(av Verdict, cragIcons []string, cloudCover float64) []string {
 	case wind:
 		return []string{"i-wind"}
 	case cold:
-		return []string{"i-snow"}
+		return []string{"i-cold"}
 	default:
 		return []string{"i-unknown"}
 	}
@@ -451,7 +508,7 @@ func iconOf(r Result, cloudCover float64) string {
 	case r.Reason == "air quality":
 		return "i-air"
 	case r.Reason == "cold" || r.Reason == "too cold":
-		return "i-snow"
+		return "i-cold"
 	case r.Reason == "no data":
 		return "i-unknown"
 	case strings.HasPrefix(r.Reason, "rain "):
@@ -492,9 +549,9 @@ func skyCondition(cloudCover float64) (icon, description string) {
 func conditionText(r Result, cloudCover float64) string {
 	if r.Verdict == Green {
 		_, sky := skyCondition(cloudCover)
-		return r.Reason + ", " + sky
+		return conditionSummary(r) + ", " + sky
 	}
-	return r.Reason
+	return conditionSummary(r)
 }
 
 func aspectIcon(aspect string) string {

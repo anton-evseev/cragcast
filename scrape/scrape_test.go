@@ -15,8 +15,8 @@ func TestCellTemperatureWithoutData(t *testing.T) {
 	}{
 		{"missing", DayForecast{}, "—"},
 		{"invalid measurements", DayForecast{AM: Window{TmaxF: 65}, PM: Window{TmaxF: 70}}, "—"},
-		{"real zero", DayForecast{AM: Window{Valid: true}, PM: Window{Valid: true}}, "0°"},
-		{"valid", DayForecast{AM: Window{Valid: true, TmaxF: 60}, PM: Window{Valid: true, TmaxF: 65}}, "65°"},
+		{"real zero", DayForecast{AM: steadyWindow(Window{Valid: true}), PM: steadyWindow(Window{Valid: true})}, "0°"},
+		{"valid", DayForecast{AM: steadyWindow(Window{Valid: true, TmaxF: 60}), PM: steadyWindow(Window{Valid: true, TmaxF: 65})}, "65°"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cell := cells([]DayForecast{tc.day}, Profile{Aspect: "shade"}, DefaultThresholds())[0]
@@ -49,7 +49,7 @@ func TestGreenWeatherIcons(t *testing.T) {
 		{80, "i-cloud", "overcast"},
 		{100, "i-cloud", "overcast"},
 	} {
-		w := Window{Valid: true, TmaxF: 65, CloudMean: tc.cloud}
+		w := steadyWindow(Window{Valid: true, TmaxF: 65, CloudMean: tc.cloud})
 		day := DayForecast{AM: w, PM: w}
 		cell := cells([]DayForecast{day}, p, th)[0]
 		if cell.Class != "go" || cell.Icon != tc.icon || !strings.Contains(cell.Label, tc.text) {
@@ -63,14 +63,16 @@ func TestGreenWeatherIcons(t *testing.T) {
 	}
 
 	day := DayForecast{
-		AM: Window{Valid: true, TmaxF: 65, CloudMean: 0},
-		PM: Window{Valid: true, TmaxF: 65, CloudMean: 100},
+		AM: steadyWindow(Window{Valid: true, TmaxF: 65, CloudMean: 0}),
+		PM: steadyWindow(Window{Valid: true, TmaxF: 65, CloudMean: 100}),
 	}
 	if cell := cells([]DayForecast{day}, p, th)[0]; cell.Icon != "i-partly-cloudy" {
 		t.Fatalf("daily cloud average ignored: %+v", cell)
 	}
 	day.AM.CloudMean = 100
 	day.PM.WindMaxMph = 30
+	day.AM = steadyWindow(day.AM)
+	day.PM = steadyWindow(day.PM)
 	cell := cells([]DayForecast{day}, p, th)[0]
 	if !cell.Split || cell.AM.Icon != "i-cloud" || cell.PM.Icon != "i-wind" {
 		t.Fatalf("split cell lost weather or warning icon: %+v", cell)
@@ -83,7 +85,7 @@ func TestGreenWeatherIcons(t *testing.T) {
 func TestWetRockIcon(t *testing.T) {
 	p := Profile{Aspect: "shade", DryoutInches: 0.4}
 	th := DefaultThresholds()
-	w := Window{Valid: true, TmaxF: 65, Antecedent: 0.4}
+	w := steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.4})
 	result := Score(w, p, "AM", th)
 	if result.Reason != "wet rock" || iconOf(result, w.CloudMean) != "i-drop" {
 		t.Fatalf("wet rock must use a droplet: %+v", result)
@@ -111,8 +113,8 @@ func TestColdAndMissingDataIcons(t *testing.T) {
 		w    Window
 		icon string
 	}{
-		{"cold", Window{Valid: true, TmaxF: 35}, "i-snow"},
-		{"too cold", Window{Valid: true, TmaxF: 25}, "i-snow"},
+		{"cold", steadyWindow(Window{Valid: true, TmaxF: 35}), "i-cold"},
+		{"too cold", steadyWindow(Window{Valid: true, TmaxF: 25}), "i-cold"},
 		{"no data", Window{}, "i-unknown"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
