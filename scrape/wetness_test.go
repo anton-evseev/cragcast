@@ -32,7 +32,7 @@ func TestProbabilityRainGrades(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: tc.amount, PrecipProbability: tc.probability})
-			p := Profile{Aspect: "shade", DryoutInches: 0.4}
+			p := Profile{Aspect: "shade", DryingFactor: 0.4}
 			th := DefaultThresholds()
 			grades := metricGrades(w, p, "AM", th)
 			wet := wetnessResult(w, grades)
@@ -55,7 +55,7 @@ func TestProbabilityRainGrades(t *testing.T) {
 }
 
 func TestHumidityWetness(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	th := DefaultThresholds()
 	for _, tc := range []struct {
 		dew  float64
@@ -76,11 +76,12 @@ func TestHumidityWetness(t *testing.T) {
 			t.Fatal(fields)
 		}
 	}
-	w := steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70, PrecipIn: 0.01, Antecedent: 0.2})
+	w := withWetness(steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70, PrecipIn: 0.01, Antecedent: 0.2}), .25, 0)
 	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got != (Result{Red, "very humid"}) {
 		t.Fatal(got)
 	}
 	w.DewMaxF = 60
+	w = withWetness(steadyWindow(w), .25, 0)
 	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "rain possible" {
 		t.Fatal(got)
 	}
@@ -89,7 +90,8 @@ func TestHumidityWetness(t *testing.T) {
 		t.Fatal(got)
 	}
 	w.DewMaxF, w.Antecedent = 70, 0.4
-	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "wet rock" {
+	w = withWetness(steadyWindow(w), .5, 0)
+	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "wet likely" {
 		t.Fatal(got)
 	}
 	// Combining the displayed metrics must not move humidity ahead of heat
@@ -101,15 +103,15 @@ func TestHumidityWetness(t *testing.T) {
 }
 
 func TestDailyHumidityWetness(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	th := DefaultThresholds()
 	for _, tc := range []struct {
 		am, pm Window
 		want   Result
 	}{
 		{steadyWindow(Window{Valid: true, TmaxF: 75}), steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70}), Result{Red, "very humid"}},
-		{steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), steadyWindow(Window{Valid: true, TmaxF: 75, Antecedent: 0.2}), Result{Yellow, "drying"}},
-		{steadyWindow(Window{Valid: true, TmaxF: 75, Antecedent: 0.2}), steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), Result{Yellow, "drying"}},
+		{steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), withWetness(steadyWindow(Window{Valid: true, TmaxF: 75, Antecedent: 0.2}), .25, 0), Result{Yellow, "drying"}},
+		{withWetness(steadyWindow(Window{Valid: true, TmaxF: 75, Antecedent: 0.2}), .25, 0), steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), Result{Yellow, "drying"}},
 		{steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70}), steadyWindow(Window{Valid: true, TmaxF: 75, PrecipIn: 0.02}), Result{Red, "rain forecast"}},
 		{Window{}, steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), Result{Yellow, "humid"}},
 		{steadyWindow(Window{Valid: true, TmaxF: 75}), Window{}, Result{Green, "dry"}},
@@ -130,22 +132,24 @@ func TestDailyHumidityWetness(t *testing.T) {
 }
 
 func TestWetnessPrecedence(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	th := DefaultThresholds()
-	w := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.1, PrecipProbability: value(40), Antecedent: 0.4})
-	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "wet rock" {
+	w := withWetness(steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.1, PrecipProbability: value(40), Antecedent: 0.4}), .5, 0)
+	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "wet likely" {
 		t.Fatal(got)
 	}
 	w.Antecedent = 0.2
+	w = withWetness(w, .25, 0)
 	if got := wetnessResult(w, metricGrades(w, p, "AM", th)); got.Reason != "rain possible" {
 		t.Fatal(got)
 	}
 	w.PrecipProbability = value(60)
 	w.Antecedent = 0.4
+	w = withWetness(w, .5, 0)
 	if got := Score(w, p, "AM", th); got.Reason != "rain likely" {
 		t.Fatal(got)
 	}
-	am := steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.4})
+	am := withWetness(steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.4}), .5, 0)
 	pm := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.1, PrecipProbability: value(60)})
 	day := cragDays([]DayForecast{{AM: am, PM: pm}}, p, th)[0]
 	if day.Wetness != "rain likely" || day.Reason != "rain likely" || strings.Split(day.Highlights, "|")[1] != "wet" {
@@ -192,6 +196,7 @@ func TestPrecipitationIntervals(t *testing.T) {
 		}
 		day := Aggregate(hours, loc, date, 1)[0]
 		if day.AM.PrecipIn != 0.02 || day.PM.PrecipIn != 0.03 ||
+			day.AM.RecentPrecip != 0.1 || day.PM.RecentPrecip < 0.1199 || day.PM.RecentPrecip > 0.1201 ||
 			day.AM.Antecedent != 0.1 || day.PM.Antecedent < 0.1199 || day.PM.Antecedent > 0.1201 ||
 			*day.AM.PrecipProbability != 40 || *day.PM.PrecipProbability != 60 {
 			t.Fatalf("%s AM=%+v PM=%+v", date, day.AM, day.PM)
@@ -249,8 +254,8 @@ func TestProbabilityParsing(t *testing.T) {
 }
 
 func TestSeparateWetnessDetails(t *testing.T) {
-	w := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.004, PrecipProbability: value(60), Antecedent: 0.45, HumidityMax: value(85), DewMaxF: 61})
-	p, th := Profile{Aspect: "shade", DryoutInches: 0.4}, DefaultThresholds()
+	w := withWetness(steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.004, PrecipProbability: value(60), Antecedent: 0.45, HumidityMax: value(85), DewMaxF: 61}), .5, 0)
+	p, th := Profile{Aspect: "shade", DryingFactor: 0.4}, DefaultThresholds()
 	fields := strings.Split(windowData(w, Score(w, p, "AM", th), metricGrades(w, p, "AM", th)), ",")
 	if got := strings.Join(fields[7:], ","); got != "0.004,60,0.450,85,61,warn|wet|warn" {
 		t.Fatal("separate wetness values or highlights lost:", got)
@@ -269,7 +274,7 @@ func TestSeparateWetnessDetails(t *testing.T) {
 }
 
 func TestAreaHighlightsExplainRating(t *testing.T) {
-	p, th := Profile{Aspect: "shade", DryoutInches: 0.4}, DefaultThresholds()
+	p, th := Profile{Aspect: "shade", DryingFactor: 0.4}, DefaultThresholds()
 	cold := steadyWindow(Window{Valid: true, TmaxF: 44, TminF: 33})
 	for i := range 3 {
 		cold.hours[i].TempF = 33
@@ -288,8 +293,8 @@ func TestAreaHighlightsExplainRating(t *testing.T) {
 			steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: 0.2, PrecipProbability: value(80)}), ""},
 		{"chance without amount", "65°F", "0 in", "go|go|warn|go|go|go|go", "Marginal · rain possible",
 			steadyWindow(Window{Valid: true, TmaxF: 65, PrecipProbability: value(30)}), ""},
-		{"drying", "65°F", "0 in", "go|go|go|warn|go|go|go", "Marginal · drying",
-			steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.2}), ""},
+		{"drying", "65°F", "0 in", "go|go|go|go|go|go|go", "Marginal · drying",
+			withWetness(steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.2}), .25, 0), ""},
 		{"humid", "65°F", "0 in", "go|go|go|go|warn|go|go", "Marginal · humid",
 			steadyWindow(Window{Valid: true, TmaxF: 65, DewMaxF: 60}), ""},
 		{"wind ignores lesser AQI", "65°F", "0 in", "go|go|go|go|go|wet|go", "Poor · too windy",
@@ -307,10 +312,53 @@ func TestAreaHighlightsExplainRating(t *testing.T) {
 				t.Fatalf("temp %q precip %q highlights %s summary %q", fields[2], fields[7], fields[13], fields[14])
 			}
 			// Every non-green rating must highlight something visible; green, nothing.
-			highlighted := strings.Contains(fields[13], "warn") || strings.Contains(fields[13], "wet")
+			highlighted := strings.Contains(fields[13], "warn") || strings.Contains(fields[13], "wet") || strings.Contains(fields[19], "warn") || strings.Contains(fields[19], "wet")
 			if highlighted != (fields[0] != "go") {
 				t.Fatalf("rating %s with highlights %s", fields[0], fields[13])
 			}
 		})
+	}
+}
+
+func TestRecentRainLookbackBoundaries(t *testing.T) {
+	loc, _ := time.LoadLocation("America/Los_Angeles")
+	// The 24 hours are elapsed hours across both DST transitions.
+	for _, date := range []time.Time{
+		time.Date(2026, 3, 8, 0, 0, 0, 0, loc),
+		time.Date(2026, 11, 1, 0, 0, 0, 0, loc),
+	} {
+		start := time.Date(date.Year(), date.Month(), date.Day(), 7, 0, 0, 0, loc)
+		var hours []Hour
+		for ts := start.Add(-72 * time.Hour); !ts.After(start.Add(6 * time.Hour)); ts = ts.Add(time.Hour) {
+			rain := 0.0
+			if ts.Equal(start.Add(-24 * time.Hour)) {
+				rain = .3
+			}
+			if ts.Equal(start.Add(-23 * time.Hour)) {
+				rain = .04
+			}
+			if ts.Equal(start) {
+				rain = .02
+			}
+			if ts.Equal(start.Add(time.Hour)) {
+				rain = .01
+			}
+			hours = append(hours, Hour{Time: ts, TempF: 45, Precip: rain})
+		}
+		w := window(hours, date, 7, 13)
+		if !w.Valid || w.RecentPrecip < .05999 || w.RecentPrecip > .06001 || w.Antecedent < .35999 || w.Antecedent > .36001 || w.PrecipIn != .01 {
+			t.Fatalf("%s: recent=%g past=%g forecast=%g valid=%v", date, w.RecentPrecip, w.Antecedent, w.PrecipIn, w.Valid)
+		}
+	}
+}
+
+func TestRecentRainDetailPayload(t *testing.T) {
+	w := steadyWindow(Window{Valid: true, TmaxF: 42, DewMaxF: 40, RecentPrecip: .016,
+		Antecedent: .151, HumidityMax: value(95), WindMaxMph: 2, CloudMean: 100})
+	w = withWetness(w, .3, 0)
+	p := Profile{Aspect: "shade", DryingFactor: .55}
+	fields := strings.Split(areaWindowData(w, p, "AM", DefaultThresholds()), ",")
+	if fields[15] != "0.016" || fields[16] != "go|go" || fields[19] != "warn|go" || fields[14] != "Marginal · drying" {
+		t.Fatal(fields)
 	}
 }

@@ -28,8 +28,17 @@ func steadyWindow(w Window) Window {
 	return w
 }
 
+// withWetness supplies explicit modeled evidence without inferring it from totals.
+func withWetness(w Window, surface, seep float64) Window {
+	w.hours = append([]Hour(nil), w.hours...)
+	for i := range w.hours {
+		w.hours[i].wetness = moisture{surface: surface, seep: seep}
+	}
+	return w
+}
+
 func TestHourlyDurationRules(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	for _, tc := range []struct {
 		pattern string
 		want    Verdict
@@ -58,7 +67,7 @@ func TestHourlyDurationRules(t *testing.T) {
 }
 
 func TestHourlySimultaneousConditions(t *testing.T) {
-	p := Profile{Aspect: "sun all day", DryoutInches: 0.4}
+	p := Profile{Aspect: "sun all day", DryingFactor: 0.4}
 	w := steadyWindow(Window{Valid: true, TmaxF: 79, CloudMean: 100})
 	// Hotter hours are cloudy; clear hours are cooler. Combining the maximum
 	// temperature with average cloud cover would incorrectly warn about heat.
@@ -95,15 +104,11 @@ func TestHourlyWetnessFloor(t *testing.T) {
 		{"likely", .02, value(60), 0, "granite", false, Result{Red, "rain likely"}},
 		{"possible", .02, value(20), 0, "granite", false, Result{Yellow, "rain possible"}},
 		{"low probability", .02, value(5), 0, "granite", false, Result{Green, "good"}},
-		{"drying", 0, nil, .2, "granite", false, Result{Yellow, "drying"}},
-		{"wet granite", 0, nil, .4, "granite", false, Result{Red, "wet rock"}},
-		{"wet sandstone", 0, nil, .2, "sandstone", false, Result{Red, "wet rock"}},
-		{"seepage", 0, nil, .1, "granite", true, Result{Red, "wet rock"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := steadyWindow(Window{Valid: true, TmaxF: 65, PrecipIn: tc.amount,
 				PrecipProbability: tc.chance, Antecedent: tc.past})
-			p := Profile{Aspect: "shade", DryoutInches: DryoutFor(tc.rock), Seepage: tc.seepage}
+			p := Profile{Aspect: "shade", DryingFactor: DryoutFor(tc.rock), Seepage: tc.seepage}
 			if got := Score(w, p, "AM", th); got != tc.want {
 				t.Fatalf("got %+v, want %+v", got, tc.want)
 			}
@@ -112,7 +117,7 @@ func TestHourlyWetnessFloor(t *testing.T) {
 }
 
 func TestHourlyMissingCoverage(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	for _, kind := range []string{"no samples", "five samples", "duplicate", "gap"} {
 		t.Run(kind, func(t *testing.T) {
 			w := steadyWindow(Window{Valid: true, TmaxF: 65})
@@ -156,11 +161,11 @@ func TestHourlyConditionsPayload(t *testing.T) {
 	w := steadyWindow(Window{Valid: true, TmaxF: 65})
 	w.hours[5].WindMph = 35
 	w.WindMaxMph = 35
-	p := Profile{Aspect: "shade", DryoutInches: .4}
+	p := Profile{Aspect: "shade", DryingFactor: .4}
 	th := DefaultThresholds()
 	cell := cells([]DayForecast{{AM: w, PM: w}}, p, th)[0]
 	fields := strings.Split(cell.AMData, ",")
-	if len(fields) != 15 || fields[14] != "Marginal · too windy after 12pm" || fields[4] != "35" {
+	if len(fields) != 20 || fields[14] != "Marginal · too windy after 12pm" || fields[4] != "35" {
 		t.Fatal(fields)
 	}
 	if !strings.Contains(cell.Label, "Marginal · too windy") || cell.Class != "warn" || cell.Icon != "i-wind" {
@@ -170,20 +175,20 @@ func TestHourlyConditionsPayload(t *testing.T) {
 	if err := web.Area(&html, web.AreaView{Crags: []web.CragView{{Cells: []web.Cell{cell}}}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Conditions", "Marginal · too windy", "p[14]", "Highlights show what set the rating", "AM 7am–1pm"} {
+	for _, text := range []string{"Conditions", "Marginal · too windy", "p[14]", "Surface wetness and seepage are estimates", "AM 7am–1pm", "Past precipitation (24h)", "Past precipitation (72h)", "p[15]", "p[19]", "Surface wetness", "Seepage"} {
 		if !strings.Contains(html.String(), text) {
 			t.Fatalf("missing %q", text)
 		}
 	}
 	missing := strings.Split(areaWindowData(Window{}, p, "AM", th), ",")
-	if len(missing) != 15 || missing[14] != "No data" {
+	if len(missing) != 20 || missing[14] != "No data" {
 		t.Fatal(missing)
 	}
 }
 
 func TestHourlyOptionalMetrics(t *testing.T) {
 	w := steadyWindow(Window{Valid: true, TmaxF: 65})
-	p := Profile{Aspect: "shade", DryoutInches: .4}
+	p := Profile{Aspect: "shade", DryingFactor: .4}
 	th := DefaultThresholds()
 	// Missing optional metrics do not invalidate complete required weather.
 	if got := Score(w, p, "AM", th); got.Verdict != Green {
@@ -234,7 +239,7 @@ func TestHourlyAggregationBoundaries(t *testing.T) {
 				day.PM.hours[0].Time.Hour() != 13 || day.PM.hours[5].Time.Hour() != 18 {
 				t.Fatal("incorrect local window boundaries")
 			}
-			p := Profile{Aspect: "shade", DryoutInches: .4}
+			p := Profile{Aspect: "shade", DryingFactor: .4}
 			th := DefaultThresholds()
 			if Score(day.AM, p, "AM", th).Verdict != Green || Score(day.PM, p, "PM", th).Verdict != Yellow {
 				t.Fatal("boundary weather assigned to wrong window")
@@ -252,7 +257,7 @@ func TestHourlyAggregationBoundaries(t *testing.T) {
 
 // These fixtures record intended changes against the old peak-based verdict.
 func TestHourlyComparedWithPeaks(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: .4}
+	p := Profile{Aspect: "shade", DryingFactor: .4}
 	th := DefaultThresholds()
 	for _, tc := range []struct {
 		name       string
@@ -266,7 +271,7 @@ func TestHourlyComparedWithPeaks(t *testing.T) {
 		{"persistent poor weather", 4, 35, 0, 0, Red, Red},
 		{"mixed window", 3, 25, 0, 0, Yellow, Yellow},
 		{"rain unchanged", 0, 0, .02, 0, Red, Red},
-		{"wet rock unchanged", 0, 0, 0, .4, Red, Red},
+		{"old rain totals have no floor", 0, 0, 0, .4, Green, Green},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			w := steadyWindow(Window{Valid: true, TmaxF: 65, WindMaxMph: tc.wind,
@@ -297,7 +302,7 @@ func TestHourlyConditionsCopy(t *testing.T) {
 		{Result{Yellow, "windy"}, "Marginal · windy"},
 		{Result{Yellow, "rain possible"}, "Marginal · rain possible"},
 		{Result{Yellow, "drying"}, "Marginal · drying"},
-		{Result{Red, "wet rock"}, "Poor · wet rock"},
+		{Result{Red, "wet likely"}, "Poor · wet likely"},
 		{Result{Red, "too windy"}, "Poor · too windy"},
 		{Result{Yellow, "no data"}, "No data"},
 	} {
@@ -309,7 +314,7 @@ func TestHourlyConditionsCopy(t *testing.T) {
 	if err := web.About(&html, web.AboutView{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"four consecutive good hours", "at least four poor hours", "rough wetness", "worse half"} {
+	for _, text := range []string{"four consecutive good hours", "at least four poor hours", "uncalibrated estimates", "worse half"} {
 		if !strings.Contains(html.String(), text) {
 			t.Fatalf("missing About explanation %q", text)
 		}

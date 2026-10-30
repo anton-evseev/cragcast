@@ -30,6 +30,8 @@ type Hour struct {
 	DewF              float64
 	AQI               *float64 // nil when air quality is unavailable
 	Cloud             float64  // cloud cover, percent 0–100
+	Radiation         *float64 // preceding-hour mean shortwave radiation, W/m²; optional
+	wetness           moisture // crag-specific estimate at Time
 }
 
 // Forecaster fetches weather and optional air quality for a batch of coordinates.
@@ -63,6 +65,7 @@ type omResponse struct {
 		Humidity          []*float64 `json:"relative_humidity_2m"`
 		DewPoint          []*float64 `json:"dew_point_2m"`
 		CloudCover        []*float64 `json:"cloud_cover"`
+		Radiation         []*float64 `json:"shortwave_radiation"`
 	} `json:"hourly"`
 	Error  bool   `json:"error"`
 	Reason string `json:"reason"`
@@ -100,11 +103,11 @@ func (o *OpenMeteo) FetchBatch(ctx context.Context, points []Coordinate, loc *ti
 		aq[key] = append([]string(nil), values...)
 	}
 	aq.Set("hourly", "us_aqi")
-	q.Set("hourly", "temperature_2m,precipitation,precipitation_probability,wind_speed_10m,dew_point_2m,relative_humidity_2m,cloud_cover")
+	q.Set("hourly", "temperature_2m,precipitation,precipitation_probability,wind_speed_10m,dew_point_2m,relative_humidity_2m,cloud_cover,shortwave_radiation")
 	q.Set("temperature_unit", "fahrenheit")
 	q.Set("wind_speed_unit", "mph")
 	q.Set("precipitation_unit", "inch")
-	q.Set("past_days", "3")
+	q.Set("past_days", "7")
 	type airResult struct {
 		data []aqResponse
 		err  error
@@ -279,6 +282,9 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 	if len(raw.Hourly.Humidity) != 0 && len(raw.Hourly.Humidity) != n {
 		return nil, fmt.Errorf("open-meteo humidity array misaligned")
 	}
+	if len(raw.Hourly.Radiation) != 0 && len(raw.Hourly.Radiation) != n {
+		return nil, fmt.Errorf("open-meteo radiation array misaligned")
+	}
 	hours := make([]Hour, 0, n)
 	for i := 0; i < n; i++ {
 		if raw.Hourly.Time[i] == nil {
@@ -315,6 +321,13 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 				return nil, fmt.Errorf("open-meteo humidity outside 0–100")
 			}
 		}
+		var radiation *float64
+		if len(raw.Hourly.Radiation) != 0 {
+			radiation = raw.Hourly.Radiation[i]
+			if radiation != nil && *radiation < 0 {
+				return nil, fmt.Errorf("open-meteo negative radiation")
+			}
+		}
 		t := time.Unix(*raw.Hourly.Time[i], 0).In(loc)
 		hours = append(hours, Hour{
 			Time:              t,
@@ -325,6 +338,7 @@ func toHours(raw omResponse, loc *time.Location) ([]Hour, error) {
 			Humidity:          humidity,
 			DewF:              *raw.Hourly.DewPoint[i],
 			Cloud:             *raw.Hourly.CloudCover[i],
+			Radiation:         radiation,
 		})
 	}
 	return hours, nil

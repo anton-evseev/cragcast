@@ -110,13 +110,17 @@
                 function values(win) {
                     var p = win.split(",");
                     var grades = (p[13] || "").split("|");
+                    var moistureGrades = (p[19] || "").split("|");
                     return [
                         (p[14] || "No data"),
                         metric(p[2], "", grades[0]),
                         metric(p[7], "", grades[1]),
                         metric(p[8], "%", grades[2]),
-                        metric(p[9], " in", grades[3]),
-                        metric(p[10], "%"),
+                        metric(p[15], " in", "go"),
+                        metric(p[9], " in", "go"),
+                        metric(p[10], "%", "go"),
+                        metric(p[17], "", moistureGrades[0]),
+                        metric(p[18], "", moistureGrades[1]),
                         metric(p[11], "°F", grades[4]),
                         metric(p[4], " mph", grades[5]),
                         metric(p[5], "", grades[6])
@@ -126,14 +130,14 @@
                 function details(am, pm) {
                     var morning = values(am), afternoon = values(pm);
                     var labels = ["Conditions", "Temperature", "Precipitation", "Precipitation chance",
-                        "Past precipitation (72h)", "Humidity", "Dew point", "Wind", "Air Quality Index"];
+                        "Past precipitation (24h)", "Past precipitation (72h)", "Humidity", "Surface wetness", "Seepage", "Dew point", "Wind", "Air Quality Index"];
                     return '<table class="weather-details"><thead><tr><td></td>' +
                         '<th scope="col">AM</th><th scope="col">PM</th></tr></thead><tbody>' +
                         labels.map(function (label, i) {
                             return '<tr><th scope="row">' + label + '</th><td>' +
                                 morning[i] + '</td><td>' + afternoon[i] + '</td></tr>';
                         }).join("") + '</tbody></table>' +
-                        '<p class="detail-note">AM 7am–1pm · PM 1pm–7pm. Highlights show what set the rating.</p>';
+                        '<p class="detail-note">AM 7am–1pm · PM 1pm–7pm. Surface wetness and seepage are estimates. Past rain and humidity are context; past rain ends at each window’s start.</p>';
                 }
 
                 function close(restoreFocus) {

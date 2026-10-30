@@ -19,7 +19,7 @@ import (
 func value(v float64) *float64 { return &v }
 
 func TestAQIGrades(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 1}
+	p := Profile{Aspect: "shade", DryingFactor: 1}
 	for _, tc := range []struct {
 		aqi    *float64
 		grade  Verdict
@@ -44,8 +44,8 @@ func TestAQIGrades(t *testing.T) {
 	}
 	w.AQI = value(150)
 	w = steadyWindow(w)
-	// Window-level rain wins a severity tie under the new conservative floor.
-	if got := Score(w, p, "AM", DefaultThresholds()); got.Reason != "rain forecast" {
+	// Air quality wins a severity tie with forecast rain.
+	if got := Score(w, p, "AM", DefaultThresholds()); got.Reason != "air quality" {
 		t.Fatal(got)
 	}
 	w.PrecipIn = 0
@@ -124,6 +124,12 @@ func TestBatchJoinAndFailure(t *testing.T) {
 					}
 					if r.Header.Get("User-Agent") != userAgent || r.URL.Query().Get("timeformat") != "unixtime" {
 						t.Error("request settings")
+					}
+					if r.URL.Path != "/air" {
+						q := r.URL.Query()
+						if q.Get("past_days") != "7" || q.Get("forecast_days") != "7" || !strings.Contains(q.Get("hourly"), "shortwave_radiation") {
+							t.Error("missing seven-day history, forecast, or radiation")
+						}
 					}
 					count := len(strings.Split(r.URL.Query().Get("latitude"), ","))
 					rows := make([]any, count)
@@ -226,7 +232,7 @@ func TestDedupAndBatchBoundary(t *testing.T) {
 
 func TestAQIRenderingAndTies(t *testing.T) {
 	day := DayForecast{Date: time.Now(), AM: steadyWindow(Window{Valid: true, TmaxF: 65, WindMaxMph: 30}), PM: steadyWindow(Window{Valid: true, TmaxF: 65, AQI: value(125)})}
-	p := Profile{Aspect: "shade", DryoutInches: 1}
+	p := Profile{Aspect: "shade", DryingFactor: 1}
 	c := cells([]DayForecast{day}, p, DefaultThresholds())[0]
 	if c.Icon != "i-air" || !strings.Contains(c.PMData, ",125") {
 		t.Fatal(c)
@@ -259,7 +265,7 @@ func TestAQIRenderingAndTies(t *testing.T) {
 func TestIndependentMetricWarnings(t *testing.T) {
 	// Rain is red while AQI 101 is independently yellow.
 	w := steadyWindow(Window{Valid: true, TmaxF: 51, PrecipIn: 0.09, Antecedent: 0.17, AQI: value(101)})
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	th := DefaultThresholds()
 	r := Score(w, p, "AM", th)
 	if r.Verdict != Red || r.Reason != "rain forecast" {
@@ -290,27 +296,23 @@ func TestIndependentMetricWarnings(t *testing.T) {
 }
 
 func TestDailySoakMatchesHighlight(t *testing.T) {
-	// The daily wetness status must retain PM's drying warning.
-	day := DayForecast{
-		AM: steadyWindow(Window{Valid: true, TmaxF: 65}),
-		PM: steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.29}),
-	}
 	for _, tc := range []struct {
-		dryout float64
-		class  string
-	}{{0.4, "warn"}, {0.2, "wet"}} {
-		p := Profile{Aspect: "shade", DryoutInches: tc.dryout}
-		cd := cragDays([]DayForecast{day}, p, DefaultThresholds())[0]
-		if strings.Split(cd.Highlights, "|")[1] != tc.class ||
-			(tc.class == "warn" && cd.Wetness != "drying") ||
-			(tc.class == "wet" && cd.Wetness != "wet rock") {
+		state         float64
+		class, reason string
+	}{
+		{.25, "warn", "drying"}, {.5, "wet", "wet likely"},
+	} {
+		day := DayForecast{AM: steadyWindow(Window{Valid: true, TmaxF: 65}),
+			PM: withWetness(steadyWindow(Window{Valid: true, TmaxF: 65}), tc.state, 0)}
+		cd := cragDays([]DayForecast{day}, Profile{Aspect: "shade", DryingFactor: .4}, DefaultThresholds())[0]
+		if strings.Split(cd.Highlights, "|")[1] != tc.class || cd.Wetness != tc.reason {
 			t.Fatalf("wetness=%s highlights=%s", cd.Wetness, cd.Highlights)
 		}
 	}
 }
 
 func TestMetricBands(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	th := DefaultThresholds()
 	cases := []struct {
 		name   string
@@ -334,9 +336,9 @@ func TestMetricBands(t *testing.T) {
 		{"dew yellow", steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 60}), Yellow, 3, "humid"},
 		{"dew below red", steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 69.9}), Yellow, 3, "humid"},
 		{"dew red", steadyWindow(Window{Valid: true, TmaxF: 75, DewMaxF: 70}), Red, 3, "very humid"},
-		{"soak green", steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.199}), Green, 2, "good"},
-		{"soak yellow", steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.2}), Yellow, 2, "drying"},
-		{"soak red", steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.4}), Red, 2, "wet rock"},
+		{"soak green", withWetness(steadyWindow(Window{Valid: true, TmaxF: 65}), .249, 0), Green, 2, "good"},
+		{"soak yellow", withWetness(steadyWindow(Window{Valid: true, TmaxF: 65}), .25, 0), Yellow, 2, "drying"},
+		{"soak red", withWetness(steadyWindow(Window{Valid: true, TmaxF: 65}), .5, 0), Red, 2, "wet likely"},
 		{"cold red", steadyWindow(Window{Valid: true, TmaxF: 28}), Red, 0, "too cold"},
 		{"cold yellow", steadyWindow(Window{Valid: true, TmaxF: 36}), Yellow, 0, "cold"},
 		{"temp green", steadyWindow(Window{Valid: true, TmaxF: 65}), Green, 0, "good"},

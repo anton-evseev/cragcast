@@ -24,21 +24,18 @@ type Result struct {
 // conditions. Built from config (aspect, rock type, seepage).
 type Profile struct {
 	Aspect       string  // "sun all day" | "AM sun" | "PM sun" | "shade" | "mixed"
-	DryoutInches float64 // antecedent rain (in 72h) at which this rock reads wet
+	DryingFactor float64 // relative rock drying speed, see DryoutFor
 	Seepage      bool    // seeps after wet spells regardless of direct rain
 }
 
-// Thresholds are every tunable constant in one place so the model can be
-// retuned without touching logic. These are v1 strawmen — calibrate against a
-// fixture table of known days.
+// Thresholds are tunable weather cutoffs. Moisture model coefficients live in
+// wetness.go. Product estimates need calibration against observed conditions.
 type Thresholds struct {
 	RainYellow              float64 // in-window rain at/above → Yellow
 	WetPrecip               float64 // rain amount (in) needed for Red when likely or probability is unknown
 	RainPossibleProbability float64
 	RainLikelyProbability   float64
 	RainConflictAmount      float64 // low probability with this much rain still warns
-	SeepDryout              float64 // antecedent (in) that makes a seeping crag Red
-	DryingFrac              float64 // fraction of dryout below which it's "still drying" (Yellow)
 	MaxSolarGain            float64 // °F added to a fully-sunny, cloudless window
 	HotRed                  float64 // effective temp at/above → Red
 	HotYellow               float64 // → Yellow
@@ -60,8 +57,6 @@ func DefaultThresholds() Thresholds {
 		RainPossibleProbability: 20,
 		RainLikelyProbability:   60,
 		RainConflictAmount:      0.10,
-		SeepDryout:              0.10,
-		DryingFrac:              0.5,
 		MaxSolarGain:            14,
 		HotRed:                  95,
 		HotYellow:               80,
@@ -78,7 +73,7 @@ func DefaultThresholds() Thresholds {
 }
 
 // Score summarizes six hourly weather ratings, with the existing window-level
-// rain and drying result as a conservative minimum severity.
+// rain result as a conservative minimum severity.
 func Score(w Window, p Profile, win string, t Thresholds) Result {
 	return Explain(w, p, win, t).Result
 }
@@ -99,35 +94,17 @@ func Explain(w Window, p Profile, win string, t Thresholds) Explanation {
 		return Explanation{Result: Result{Yellow, "no data"}}
 	}
 	var ratings []Result
-	var goodRun, longestGood, poor int
 	for i, h := range w.hours {
 		if i > 0 && h.Time.Sub(w.hours[i-1].Time) != time.Hour {
 			return Explanation{Result: Result{Yellow, "no data"}}
 		}
-		r := scoreHour(h, p, win, t)
-		ratings = append(ratings, r)
-		if r.Verdict == Green {
-			goodRun++
-			longestGood = max(longestGood, goodRun)
-		} else {
-			goodRun = 0
-		}
-		if r.Verdict == Red {
-			poor++
-		}
+		ratings = append(ratings, scoreHour(h, p, win, t))
 	}
-	result := dominantReason(ratings)
-	switch {
-	case longestGood >= 4 && poor == 0:
-		result = Result{Green, "good"}
-	case poor >= 4:
-		result.Verdict = Red
-	default:
-		result.Verdict = Yellow
-	}
-	wetness := rainDryingResult(w, metricGrades(w, p, win, t))
-	if wetness.Verdict != Green && wetness.Verdict >= result.Verdict {
-		return Explanation{Result: wetness}
+	result := durationResult(ratings)
+	// Only forecast rain retains a whole-window floor.
+	rain := forecastRainResult(w, rainGrade(w, t))
+	if rain.Verdict != Green && worseResult(result, rain) == rain {
+		return Explanation{Result: rain}
 	}
 	e := Explanation{Result: result}
 	if result.Verdict == Green {
@@ -184,6 +161,7 @@ const (
 	MetricDew
 	MetricWind
 	MetricAQI
+	MetricSeepage
 )
 
 func reasonMetric(reason string) Metric {
@@ -192,8 +170,10 @@ func reasonMetric(reason string) Metric {
 		return MetricTemp
 	case strings.HasPrefix(reason, "rain "):
 		return MetricRain
-	case reason == "drying" || reason == "wet rock":
+	case reason == "drying" || reason == "wet likely":
 		return MetricPastRain
+	case strings.HasPrefix(reason, "seepage "):
+		return MetricSeepage
 	case reason == "humid" || reason == "very humid":
 		return MetricDew
 	case reason == "windy" || reason == "too windy":
@@ -205,8 +185,7 @@ func reasonMetric(reason string) Metric {
 	}
 }
 
-// scoreHour uses simultaneous observations. Rain and drying are deliberately
-// excluded here: their thresholds still describe the entire climbing window.
+// scoreHour combines simultaneous weather and the current modeled moisture.
 func scoreHour(h Hour, p Profile, win string, t Thresholds) Result {
 	w := Window{Valid: true, TmaxF: h.TempF, DewMaxF: h.DewF,
 		WindMaxMph: h.WindMph, CloudMean: h.Cloud, AQI: h.AQI}
@@ -240,10 +219,10 @@ func scoreHour(h Hour, p Profile, win string, t Thresholds) Result {
 			case 5:
 				reason = "air quality"
 			}
-			return Result{severity, reason}
+			return worseResult(Result{severity, reason}, moistureResult(h.wetness))
 		}
 	}
-	return result
+	return worseResult(result, moistureResult(h.wetness))
 }
 
 // dominantReason chooses frequency, then severity, then the existing metric
@@ -269,15 +248,23 @@ func dominantReason(ratings []Result) Result {
 }
 
 func reasonPriority(reason string) int {
-	switch reason {
-	case "air quality":
+	switch reasonMetric(reason) {
+	case MetricAQI:
 		return 0
-	case "hot", "too hot", "cold", "too cold":
+	case MetricRain:
 		return 1
-	case "humid", "very humid":
+	case MetricSeepage:
 		return 2
+	case MetricPastRain:
+		return 3
+	case MetricTemp:
+		return 4
+	case MetricDew:
+		return 5
+	case MetricWind:
+		return 6
 	default:
-		return 3 // wind
+		return 7
 	}
 }
 
@@ -304,13 +291,9 @@ func explanationSummary(e Explanation) string {
 	return text
 }
 
-// worseResult prefers air quality on ties, then rain over drying.
+// worseResult selects severity, then the shared reason priority.
 func worseResult(a, b Result) Result {
-	if b.Verdict > a.Verdict || (b.Verdict == a.Verdict && b.Reason == "air quality") {
-		return b
-	}
-	if b.Verdict == a.Verdict && strings.HasPrefix(b.Reason, "rain ") &&
-		(a.Reason == "drying" || a.Reason == "wet rock") {
+	if b.Verdict > a.Verdict || b.Verdict == a.Verdict && reasonPriority(b.Reason) < reasonPriority(a.Reason) {
 		return b
 	}
 	return a
@@ -368,9 +351,8 @@ func sunFactor(aspect, win string) float64 {
 	return 0.3 // unknown aspect → mild default
 }
 
-// DryoutFor maps a rock type to its 72h antecedent threshold. Slow-drying rock
-// (conglomerate, sandstone) reads wet from less rain; well-draining rock needs
-// more. Tunable, like everything else here.
+// DryoutFor supplies the relative rock factor used by the surface drying model.
+// The values are product estimates; they are no longer rainfall thresholds.
 func DryoutFor(rock string) float64 {
 	switch rock {
 	case "sandstone", "conglomerate":
@@ -401,21 +383,24 @@ func metricGrades(w Window, p Profile, win string, t Thresholds) [6]Verdict {
 		grades[0] = Yellow
 	}
 	grades[1] = rainGrade(w, t)
-	dryout := p.DryoutInches
-	if p.Seepage {
-		dryout = t.SeepDryout
-	}
-	switch {
-	case w.Antecedent >= dryout:
-		grades[2] = Red
-	case w.Antecedent >= dryout*t.DryingFrac:
-		grades[2] = Yellow
-	}
+	grades[2] = moistureWindow(w, "").Verdict
 	switch {
 	case w.DewMaxF >= t.DewRed:
 		grades[3] = Red
 	case w.DewMaxF >= t.DewYellow:
 		grades[3] = Yellow
+	}
+	if len(w.hours) == 6 {
+		ratings := make([]Result, len(w.hours))
+		for i, h := range w.hours {
+			ratings[i] = Result{Green, "dry"}
+			if h.DewF >= t.DewRed {
+				ratings[i] = Result{Red, "very humid"}
+			} else if h.DewF >= t.DewYellow {
+				ratings[i] = Result{Yellow, "humid"}
+			}
+		}
+		grades[3] = durationResult(ratings).Verdict
 	}
 	switch {
 	case w.WindMaxMph >= t.WindRed:
@@ -472,29 +457,29 @@ func wetnessResult(w Window, grades [6]Verdict) Result {
 	return wetness
 }
 
-// rainDryingResult preserves the existing overall scoring reason priority.
+// rainDryingResult uses the same hourly moisture duration policy as Score.
 func rainDryingResult(w Window, grades [6]Verdict) Result {
 	if !w.Valid {
 		return Result{Yellow, "—"}
 	}
-	if grades[1] >= grades[2] && grades[1] != Green {
-		reason := "rain possible"
-		if grades[1] == Red {
-			reason = "rain likely"
-			if w.PrecipProbability == nil {
-				reason = "rain forecast"
-			}
+	r := moistureWindow(w, "")
+	if r.Verdict == Green {
+		r = Result{Green, "dry"}
+	}
+	return worseResult(r, forecastRainResult(w, grades[1]))
+}
+
+func forecastRainResult(w Window, grade Verdict) Result {
+	r := Result{grade, "dry"}
+	if grade == Yellow {
+		r.Reason = "rain possible"
+	} else if grade == Red {
+		r.Reason = "rain likely"
+		if w.PrecipProbability == nil {
+			r.Reason = "rain forecast"
 		}
-		return Result{grades[1], reason}
 	}
-	switch grades[2] {
-	case Red:
-		return Result{Red, "wet rock"}
-	case Yellow:
-		return Result{Yellow, "drying"}
-	default:
-		return Result{Green, "dry"}
-	}
+	return r
 }
 
 // worseWetness selects severity first, then rain, drying, and humidity.
@@ -516,8 +501,10 @@ func worseWetness(a, b Result) Result {
 func wetnessPriority(reason string) int {
 	switch {
 	case strings.HasPrefix(reason, "rain "):
+		return 4
+	case strings.HasPrefix(reason, "seepage "):
 		return 3
-	case reason == "drying" || reason == "wet rock":
+	case reason == "drying" || reason == "wet likely":
 		return 2
 	case reason == "humid" || reason == "very humid":
 		return 1

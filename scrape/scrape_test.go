@@ -35,7 +35,7 @@ func TestCellTemperatureWithoutData(t *testing.T) {
 }
 
 func TestGreenWeatherIcons(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 1}
+	p := Profile{Aspect: "shade", DryingFactor: 1}
 	th := DefaultThresholds()
 	for _, tc := range []struct {
 		cloud float64
@@ -83,11 +83,11 @@ func TestGreenWeatherIcons(t *testing.T) {
 }
 
 func TestWetRockIcon(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 0.4}
+	p := Profile{Aspect: "shade", DryingFactor: 0.4}
 	th := DefaultThresholds()
-	w := steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.4})
+	w := withWetness(steadyWindow(Window{Valid: true, TmaxF: 65, Antecedent: 0.4}), .5, 0)
 	result := Score(w, p, "AM", th)
-	if result.Reason != "wet rock" || iconOf(result, w.CloudMean) != "i-drop" {
+	if result.Reason != "wet likely" || iconOf(result, w.CloudMean) != "i-drop" {
 		t.Fatalf("wet rock must use a droplet: %+v", result)
 	}
 	cell := cells([]DayForecast{{AM: w, PM: w}}, p, th)[0]
@@ -106,7 +106,7 @@ func TestWetRockIcon(t *testing.T) {
 }
 
 func TestColdAndMissingDataIcons(t *testing.T) {
-	p := Profile{Aspect: "shade", DryoutInches: 1}
+	p := Profile{Aspect: "shade", DryingFactor: 1}
 	th := DefaultThresholds()
 	for _, tc := range []struct {
 		name string

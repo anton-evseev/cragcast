@@ -96,6 +96,9 @@ func (s *scraper) region(r config.Region) error {
 	// Check every location before writing pages so incomplete weather cannot
 	// replace the previous forecast.
 	for point, hours := range fetched {
+		if err := validateWarmup(hours, now); err != nil {
+			return fmt.Errorf("incomplete weather coverage for %g, %g: %w", point.Lat, point.Lon, err)
+		}
 		for _, day := range Aggregate(hours, loc, now, forecastDays) {
 			if !day.AM.Valid || !day.PM.Valid {
 				return fmt.Errorf("incomplete weather coverage for %g, %g on %s", point.Lat, point.Lon, day.Date.Format("2006-01-02"))
@@ -116,16 +119,14 @@ func (s *scraper) region(r config.Region) error {
 			scraped++
 			log.Printf("[%d/%d] Scraping data for %s/%s (%g, %g)...", scraped, total, area.Name, c.Name, c.Lat, c.Lon)
 			hours := fetched[Coordinate{c.Lat, c.Lon}]
-			fc := Aggregate(hours, loc, now, forecastDays)
+			prof := Profile{
+				Aspect: c.Aspect, DryingFactor: DryoutFor(c.Rock), Seepage: c.Seepage,
+			}
+			fc := Aggregate(modelWetness(hours, prof), loc, now, forecastDays)
 			if dates == nil {
 				for _, d := range fc {
 					dates = append(dates, d.Date)
 				}
-			}
-			prof := Profile{
-				Aspect:       c.Aspect,
-				DryoutInches: DryoutFor(c.Rock),
-				Seepage:      c.Seepage,
 			}
 			page.Crags = append(page.Crags, web.CragView{
 				Name:       c.Name,
@@ -255,7 +256,7 @@ func cragDays(days []DayForecast, p Profile, th Thresholds) []cragDay {
 		limiting := worseResult(am.Result, pm.Result)
 		grades := metricGrades(d.AM, p, "AM", th)
 		pmGrades := metricGrades(d.PM, p, "PM", th)
-		wetness := worseWetness(wetnessResult(d.AM, grades), wetnessResult(d.PM, pmGrades))
+		wetness := worseWetness(explainedWetness(d.AM, am.Result, grades), explainedWetness(d.PM, pm.Result, pmGrades))
 		cd := cragDay{CloudMean: dayCloudCover(d), Highlights: dayHighlights(am.Result, pm.Result), Verdict: limiting.Verdict, Reason: limiting.Reason, Temp: "—", Wetness: wetness.Reason, Wind: "—", AQI: formatAQI(peakAQI(d.AM.AQI, d.PM.AQI))}
 		if d.AM.Valid || d.PM.Valid {
 			cd.Valid = true
@@ -292,7 +293,7 @@ func windowData(w Window, r Result, grades [6]Verdict) string {
 	if w.AQI != nil {
 		aq = fmt.Sprintf("%.0f", *w.AQI)
 	}
-	wetness := wetnessResult(w, grades)
+	wetness := explainedWetness(w, r, grades)
 	chance, humidity := "", ""
 	if w.PrecipProbability != nil {
 		chance = fmt.Sprintf("%.0f", *w.PrecipProbability)
@@ -313,7 +314,7 @@ func areaWindowData(w Window, p Profile, win string, th Thresholds) string {
 	e := Explain(w, p, win, th)
 	data := windowData(w, e.Result, metricGrades(w, p, win, th))
 	if !w.Valid {
-		return data + ",," + explanationSummary(e)
+		return data + ",," + explanationSummary(e) + ",,,,,"
 	}
 	fields := strings.Split(data, ",")
 	fields[2] = temperatureRange(w, e)
@@ -330,8 +331,6 @@ func areaWindowData(w Window, p Profile, win string, th Thresholds) string {
 		if w.PrecipProbability != nil {
 			rows[2] = cls
 		}
-	case MetricPastRain:
-		rows[3] = cls
 	case MetricDew:
 		rows[4] = cls
 	case MetricWind:
@@ -339,7 +338,47 @@ func areaWindowData(w Window, p Profile, win string, th Thresholds) string {
 	case MetricAQI:
 		rows[6] = cls
 	}
-	return strings.Join(fields, ",") + "," + strings.Join(rows, "|") + "," + explanationSummary(e)
+	// Preserve indices 0..16; historical rain and RH are neutral context.
+	surface, seep := moistureWindow(w, "surface"), moistureWindow(w, "seep")
+	// Alternating conditions can make the combined window marginal even when
+	// one component alone has four consecutive good hours. Show its actual
+	// contribution rather than a contradictory "Dry likely" or "Low risk".
+	if e.Verdict != Green {
+		switch reasonMetric(e.Reason) {
+		case MetricPastRain:
+			if e.Verdict >= surface.Verdict {
+				surface = e.Result
+			}
+		case MetricSeepage:
+			if e.Verdict >= seep.Verdict {
+				seep = e.Result
+			}
+		}
+	}
+	surfaceText, seepText := "Dry likely", "Low risk"
+	if surface.Verdict != Green {
+		surfaceText = strings.ToUpper(surface.Reason[:1]) + surface.Reason[1:]
+	}
+	if seep.Verdict != Green {
+		seepText = strings.ToUpper(seep.Reason[:1]) + seep.Reason[1:]
+	}
+	if !p.Seepage {
+		seepText = "Not expected"
+	}
+	return strings.Join(fields, ",") + "," + strings.Join(rows, "|") + "," + explanationSummary(e) +
+		fmt.Sprintf(",%.3f,go|go,%s,%s,%s|%s", w.RecentPrecip, surfaceText, seepText,
+			classOf(surface.Verdict), classOf(seep.Verdict))
+}
+
+func explainedWetness(w Window, r Result, grades [6]Verdict) Result {
+	wetness := wetnessResult(w, grades)
+	switch reasonMetric(r.Reason) {
+	case MetricRain, MetricPastRain, MetricSeepage, MetricDew:
+		if r.Verdict >= wetness.Verdict {
+			return r
+		}
+	}
+	return wetness
 }
 
 // temperatureRange shows the window's low–high, plus the sun-adjusted
@@ -379,7 +418,7 @@ func dayHighlights(results ...Result) string {
 		switch reasonMetric(r.Reason) {
 		case MetricTemp:
 			col = 0
-		case MetricRain, MetricPastRain, MetricDew:
+		case MetricRain, MetricPastRain, MetricSeepage, MetricDew:
 			col = 1
 		case MetricWind:
 			col = 2
@@ -513,7 +552,7 @@ func iconOf(r Result, cloudCover float64) string {
 		return "i-unknown"
 	case strings.HasPrefix(r.Reason, "rain "):
 		return "i-rain"
-	case r.Reason == "wet rock" || r.Reason == "drying":
+	case r.Reason == "wet likely" || r.Reason == "drying" || strings.HasPrefix(r.Reason, "seepage "):
 		return "i-drop"
 	case r.Reason == "humid" || r.Reason == "very humid":
 		return "i-drop"

@@ -26,6 +26,7 @@ type Window struct {
 	PrecipIn          float64  // total rain in the window
 	PrecipProbability *float64 // peak hourly chance, only with complete window coverage
 	CloudMean         float64  // drives the solar-gain term
+	RecentPrecip      float64  // total rain in the prior 24h up to window start
 	Antecedent        float64  // total rain in the prior 72h up to window start
 }
 
@@ -58,7 +59,10 @@ func window(hours []Hour, date time.Time, startH, endH int) Window {
 	start := time.Date(date.Year(), date.Month(), date.Day(), startH, 0, 0, 0, date.Location())
 	end := time.Date(date.Year(), date.Month(), date.Day(), endH, 0, 0, 0, date.Location())
 
-	w := Window{Antecedent: precipSum(hours, start.Add(-antecedentHrs*time.Hour), start)}
+	w := Window{
+		Antecedent:   precipSum(hours, start.Add(-antecedentHrs*time.Hour), start),
+		RecentPrecip: precipSum(hours, start.Add(-24*time.Hour), start),
+	}
 	var cloudSum float64
 	var count, humidityCount int
 	probabilities := map[int64]float64{}
