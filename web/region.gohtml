@@ -519,9 +519,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>Cragcast — climbing conditions</title>
-        <link rel="canonical" href="https://cragcast.org/{{.RegionId}}" />
-        <meta name="description" content="Compare climbing conditions at crags near {{.Region}} with forecasts for rain, temperature, wind, and air quality." />
+        {{template "meta" .Meta}}
         {{template "styles"}}
     </head>
     <body>

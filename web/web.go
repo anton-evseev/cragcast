@@ -26,6 +26,16 @@ func Error(w io.Writer, v ErrorView) error   { return tmpl.ExecuteTemplate(w, "e
 
 // ----- shared page chrome -----
 
+const siteURL = "https://cragcast.org"
+
+// Meta is the context the shared meta partial renders against: title,
+// description, canonical URL, and their Open Graph copies for link previews.
+type Meta struct {
+	Title       string
+	Description string
+	URL         string
+}
+
 // Chrome is the header/footer context every forecast page shares.
 type Chrome struct {
 	Region   string
@@ -77,9 +87,26 @@ type SummaryCell struct {
 // AreaView is the per-area subpage: the full crag-by-crag forecast.
 type AreaView struct {
 	Chrome
+	AreaId   string
 	AreaName string
 	Drive    string
 	Crags    []CragView
+}
+
+func (v RegionView) Meta() Meta {
+	return Meta{
+		Title:       "Climbing conditions near " + v.Region + " — Cragcast",
+		Description: "Compare climbing conditions at crags near " + v.Region + " with forecasts for rain, temperature, wind, and air quality.",
+		URL:         siteURL + "/" + v.RegionId,
+	}
+}
+
+func (v AreaView) Meta() Meta {
+	return Meta{
+		Title:       v.AreaName + " climbing conditions — Cragcast",
+		Description: v.Description(),
+		URL:         siteURL + "/" + v.RegionId + "/" + v.AreaId,
+	}
 }
 
 // Description summarizes the area using its configured crag names.
@@ -138,6 +165,14 @@ type Half struct {
 
 type AboutView struct {
 	Footer FooterData
+}
+
+func (AboutView) Meta() Meta {
+	return Meta{
+		Title:       "About — Cragcast",
+		Description: "Learn how Cragcast rates climbing conditions using weather and air quality forecasts from Open-Meteo and CAMS.",
+		URL:         siteURL + "/about",
+	}
 }
 
 type ErrorView struct {

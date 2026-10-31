@@ -111,7 +111,7 @@ func (s *scraper) region(r config.Region) error {
 		if len(area.Crags) == 0 {
 			continue // nothing to score — skip empty areas (no card, no subpage)
 		}
-		page := web.AreaView{Chrome: chrome, AreaName: area.Name, Drive: area.Drive}
+		page := web.AreaView{Chrome: chrome, AreaId: area.Id, AreaName: area.Name, Drive: area.Drive}
 		var dates []time.Time
 		var perCrag [][]cragDay // [crag][day]
 

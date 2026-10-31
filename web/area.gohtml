@@ -18,8 +18,7 @@
     <head>
         <meta charset="utf-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1" />
-        <title>{{.AreaName}} — climbing conditions within driving distance of {{.Region}} — Cragcast</title>
-        <meta name="description" content="{{.Description}}" />
+        {{template "meta" .Meta}}
         {{template "styles"}}
         <style>
             .weather-details {
