@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -106,6 +107,10 @@ func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /about", s.handleAbout)
+	static, _ := fs.ReadDir(web.Static, ".") // embedded, so it can't fail
+	for _, f := range static {
+		mux.Handle("GET /"+f.Name(), http.FileServerFS(web.Static))
+	}
 	for _, region := range s.regions {
 		mux.HandleFunc("GET /"+region, func(w http.ResponseWriter, r *http.Request) {
 			s.handleRegion(w, r, region)

@@ -4,6 +4,7 @@ package bundle
 import (
 	"bytes"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 
@@ -62,6 +63,17 @@ func Run(o Options) error {
 		asset{path: "about.html", data: about.Bytes()},
 		asset{path: "404.html", data: notFound.Bytes()},
 	)
+	static, err := fs.ReadDir(web.Static, ".")
+	if err != nil {
+		return fmt.Errorf("read static files: %w", err)
+	}
+	for _, f := range static {
+		data, err := fs.ReadFile(web.Static, f.Name())
+		if err != nil {
+			return fmt.Errorf("read static file %q: %w", f.Name(), err)
+		}
+		assets = append(assets, asset{path: f.Name(), data: data})
+	}
 
 	if err := os.MkdirAll(o.Out, 0o755); err != nil {
 		return fmt.Errorf("create output directory: %w", err)

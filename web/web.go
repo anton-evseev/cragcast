@@ -9,11 +9,25 @@ import (
 	"embed"
 	"html/template"
 	"io"
+	"io/fs"
 	"strings"
 )
 
 //go:embed *.gohtml
 var files embed.FS
+
+//go:embed static
+var static embed.FS
+
+// Static holds the site-wide files (link-preview image, icons) served from the
+// site root.
+var Static = func() fs.FS {
+	sub, err := fs.Sub(static, "static")
+	if err != nil {
+		panic(err)
+	}
+	return sub
+}()
 
 var tmpl = template.Must(template.New("web").ParseFS(files, "*.gohtml"))
 
@@ -35,6 +49,9 @@ type Meta struct {
 	Description string
 	URL         string
 }
+
+// Image is the absolute URL of the link-preview image.
+func (Meta) Image() string { return siteURL + "/og.png" }
 
 // Chrome is the header/footer context every forecast page shares.
 type Chrome struct {
