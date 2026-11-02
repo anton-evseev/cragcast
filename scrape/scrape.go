@@ -96,6 +96,7 @@ func (s *scraper) region(r config.Region) error {
 	// Check every location before writing pages so incomplete weather cannot
 	// replace the previous forecast.
 	for point, hours := range fetched {
+		hours = trimHistory(hours, now)
 		if err := validateWarmup(hours, now); err != nil {
 			return fmt.Errorf("incomplete weather coverage for %g, %g: %w", point.Lat, point.Lon, err)
 		}
@@ -104,6 +105,7 @@ func (s *scraper) region(r config.Region) error {
 				return fmt.Errorf("incomplete weather coverage for %g, %g on %s", point.Lat, point.Lon, day.Date.Format("2006-01-02"))
 			}
 		}
+		fetched[point] = hours
 	}
 	scraped := 0
 

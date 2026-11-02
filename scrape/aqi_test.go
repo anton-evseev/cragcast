@@ -127,8 +127,8 @@ func TestBatchJoinAndFailure(t *testing.T) {
 					}
 					if r.URL.Path != "/air" {
 						q := r.URL.Query()
-						if q.Get("past_days") != "7" || q.Get("forecast_days") != "7" || !strings.Contains(q.Get("hourly"), "shortwave_radiation") {
-							t.Error("missing seven-day history, forecast, or radiation")
+						if q.Get("past_days") != "8" || q.Get("forecast_days") != "7" || !strings.Contains(q.Get("hourly"), "shortwave_radiation") {
+							t.Error("missing padded history, forecast, or radiation")
 						}
 					}
 					count := len(strings.Split(r.URL.Query().Get("latitude"), ","))

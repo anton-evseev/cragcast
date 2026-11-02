@@ -3,15 +3,87 @@ package scrape
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/anton-evseev/cragcast/config"
 )
+
+func TestPaddedWeatherHistoryAcrossDST(t *testing.T) {
+	loc, err := time.LoadLocation("America/Los_Angeles")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, date := range []string{"2026-03-08", "2026-03-09", "2026-10-14", "2026-11-01", "2026-11-02"} {
+		t.Run(date, func(t *testing.T) {
+			now, err := time.ParseInLocation("2006-01-02 15:04", date+" 15:00", loc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			// Reproduce Open-Meteo's fixed request-time offset for the entire
+			// range, rather than generating history with Go's DST-aware dates.
+			_, offset := now.Zone()
+			fixed := time.FixedZone("API", offset)
+			midnight := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, fixed)
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				if r.URL.Path == "/air" {
+					json.NewEncoder(w).Encode(map[string]any{"hourly": map[string]any{"time": []int64{now.Unix()}, "us_aqi": []float64{50}}})
+					return
+				}
+				past, err := strconv.Atoi(r.URL.Query().Get("past_days"))
+				if err != nil {
+					t.Error(err)
+				}
+				var timestamps []int64
+				for ts := midnight.AddDate(0, 0, -past); ts.Before(midnight.AddDate(0, 0, 7)); ts = ts.Add(time.Hour) {
+					timestamps = append(timestamps, ts.Unix())
+				}
+				row := weatherRow(timestamps, 65)
+				// Rain in the padding must not seed the seven-day model.
+				row["hourly"].(map[string]any)["precipitation"].([]float64)[1] = 1
+				json.NewEncoder(w).Encode(row)
+			}))
+			defer server.Close()
+			o := &OpenMeteo{Client: server.Client(), BaseURL: server.URL, AirQualityURL: server.URL + "/air"}
+			rows, err := o.FetchBatch(context.Background(), []Coordinate{{44.36779, -121.13906}}, loc)
+			if err != nil {
+				t.Fatal(err)
+			}
+			hours := trimHistory(rows[0], now)
+			if err := validateWarmup(hours, now); err != nil {
+				t.Fatal(err)
+			}
+			start := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).AddDate(0, 0, -7)
+			if !hours[0].Time.Equal(start) {
+				t.Fatalf("history starts at %s, want %s", hours[0].Time, start)
+			}
+			for _, h := range modelWetness(hours, Profile{Seepage: true}) {
+				if h.wetness != (moisture{}) {
+					t.Fatal("rain before the warmup boundary affected the model")
+				}
+			}
+			if validateWarmup(hours[1:], now) == nil {
+				t.Fatal("accepted missing first history hour")
+			}
+			gap := append(slices.Clone(hours[:24]), hours[25:]...)
+			if validateWarmup(gap, now) == nil {
+				t.Fatal("accepted missing interior history hour")
+			}
+			for _, day := range Aggregate(hours, loc, now, forecastDays) {
+				if !day.AM.Valid || !day.PM.Valid {
+					t.Fatalf("incomplete forecast on %s", day.Date)
+				}
+			}
+		})
+	}
+}
 
 func TestRequiredWeatherValues(t *testing.T) {
 	for _, field := range []string{"time", "temperature_2m", "precipitation", "wind_speed_10m", "dew_point_2m", "cloud_cover"} {

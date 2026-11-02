@@ -107,7 +107,9 @@ func (o *OpenMeteo) FetchBatch(ctx context.Context, points []Coordinate, loc *ti
 	q.Set("temperature_unit", "fahrenheit")
 	q.Set("wind_speed_unit", "mph")
 	q.Set("precipitation_unit", "inch")
-	q.Set("past_days", "7")
+	// Open-Meteo fixes the timezone offset at request time. Pad history so
+	// a fall-back transition cannot omit the first local midnight we need.
+	q.Set("past_days", "8")
 	type airResult struct {
 		data []aqResponse
 		err  error

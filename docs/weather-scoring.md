@@ -1,8 +1,9 @@
 # Weather scoring
 
-Cragcast fetches seven calendar days of hourly weather history and seven days
-of forecast from Open-Meteo. The history is model weather, not a rain gauge
-reading at the rock. Each crag receives its own copy of the weather
+Cragcast requests eight days of hourly weather history from Open-Meteo and trims
+it to seven local calendar days before modeling, padding the request to cover
+DST offset changes. It also fetches seven days of forecast. The history is model
+weather, not a rain gauge reading at the rock. Each crag receives its own copy of the weather
 series. Two moisture estimates start dry at the beginning of the history and
 advance chronologically through every hour, including nights. These defaults
 are **uncalibrated product estimates**, not observations of rock conditions.

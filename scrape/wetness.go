@@ -19,6 +19,19 @@ type moisture struct {
 	seep    float64
 }
 
+// trimHistory keeps exactly seven local calendar days of warmup, regardless
+// of the API's padded range. The moisture model must start dry at this boundary.
+func trimHistory(hours []Hour, now time.Time) []Hour {
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	start := today.AddDate(0, 0, -7)
+	for i, h := range hours {
+		if !h.Time.Before(start) {
+			return hours[i:]
+		}
+	}
+	return nil
+}
+
 // validateWarmup requires seven calendar days of hourly weather before today.
 // Elapsed-hour iteration preserves both occurrences of a repeated DST hour.
 func validateWarmup(hours []Hour, now time.Time) error {
