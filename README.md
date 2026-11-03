@@ -17,11 +17,12 @@ Live site: [cragcast.org](https://cragcast.org).
 From the repository root, fetch a forecast and serve it:
 
 ```sh
-go run . scrape --region seattle --out ./data
-go run . serve --region seattle --from ./data --addr 127.0.0.1:8090
+make preview
 ```
 
-Open [localhost:8090](http://localhost:8090). Scraping does not require an API key.
+Open [127.0.0.1:8090](http://127.0.0.1:8090). Each run scrapes fresh data before starting the server. Stop it with Ctrl-C. Scraping does not require an API key.
+
+Override the defaults with `make preview REGION=seattle DATA_DIR=./data ADDR=127.0.0.1:8091`.
 
 Run the tests with `go test ./...`.
 

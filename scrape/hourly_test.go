@@ -165,7 +165,7 @@ func TestHourlyConditionsPayload(t *testing.T) {
 	th := DefaultThresholds()
 	cell := cells([]DayForecast{{AM: w, PM: w}}, p, th)[0]
 	fields := strings.Split(cell.AMData, ",")
-	if len(fields) != 20 || fields[14] != "Marginal · too windy after 12pm" || fields[4] != "35" {
+	if len(fields) != 21 || fields[14] != "Marginal · too windy after 12pm" || fields[4] != "35" || fields[20] != "0" {
 		t.Fatal(fields)
 	}
 	if !strings.Contains(cell.Label, "Marginal · too windy") || cell.Class != "warn" || cell.Icon != "i-wind" {
@@ -175,13 +175,13 @@ func TestHourlyConditionsPayload(t *testing.T) {
 	if err := web.Area(&html, web.AreaView{Crags: []web.CragView{{Cells: []web.Cell{cell}}}}); err != nil {
 		t.Fatal(err)
 	}
-	for _, text := range []string{"Conditions", "Marginal · too windy", "p[14]", "Surface wetness and seepage are estimates", "AM 7am–1pm", "Past precipitation (24h)", "Past precipitation (72h)", "p[15]", "p[19]", "Surface wetness", "Seepage"} {
+	for _, text := range []string{"Conditions", "Marginal · too windy", "p[14]", "Surface wetness and seepage are estimates", "AM 7am–1pm", "Past precipitation (24h)", "Past precipitation (72h)", "p[15]", "p[19]", "Surface wetness", "Seepage", "Cloud cover", `metric(p[20], "%", "go")`} {
 		if !strings.Contains(html.String(), text) {
 			t.Fatalf("missing %q", text)
 		}
 	}
 	missing := strings.Split(areaWindowData(Window{}, p, "AM", th), ",")
-	if len(missing) != 20 || missing[14] != "No data" {
+	if len(missing) != 21 || missing[14] != "No data" || missing[20] != "" {
 		t.Fatal(missing)
 	}
 }

@@ -377,7 +377,7 @@ func TestExitsRecordedWeather(t *testing.T) {
 				win := []string{"AM", "PM"}[i]
 				e := Explain(w, p, win, th)
 				fields := strings.Split(areaWindowData(w, p, win, th), ",")
-				if !w.Valid || len(fields) != 20 || fields[0] != classOf(e.Verdict) || fields[14] != explanationSummary(e) || fields[16] != "go|go" {
+				if !w.Valid || len(fields) != 21 || fields[0] != classOf(e.Verdict) || fields[14] != explanationSummary(e) || fields[16] != "go|go" {
 					t.Fatal("recorded forecast has inconsistent details", fields)
 				}
 				if m := reasonMetric(e.Reason); m == MetricPastRain || m == MetricSeepage {

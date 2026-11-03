@@ -311,12 +311,12 @@ func windowData(w Window, r Result, grades [6]Verdict) string {
 
 // areaWindowData appends the area-details fields to windowData: the
 // temperature range, the displayed precipitation, highlights for only the
-// measurements that explain the rating, and the rating's explanation.
+// measurements that explain the rating, the rating's explanation, and mean cloud cover.
 func areaWindowData(w Window, p Profile, win string, th Thresholds) string {
 	e := Explain(w, p, win, th)
 	data := windowData(w, e.Result, metricGrades(w, p, win, th))
 	if !w.Valid {
-		return data + ",," + explanationSummary(e) + ",,,,,"
+		return data + ",," + explanationSummary(e) + ",,,,,,"
 	}
 	fields := strings.Split(data, ",")
 	fields[2] = temperatureRange(w, e)
@@ -368,8 +368,8 @@ func areaWindowData(w Window, p Profile, win string, th Thresholds) string {
 		seepText = "Not expected"
 	}
 	return strings.Join(fields, ",") + "," + strings.Join(rows, "|") + "," + explanationSummary(e) +
-		fmt.Sprintf(",%.3f,go|go,%s,%s,%s|%s", w.RecentPrecip, surfaceText, seepText,
-			classOf(surface.Verdict), classOf(seep.Verdict))
+		fmt.Sprintf(",%.3f,go|go,%s,%s,%s|%s,%.0f", w.RecentPrecip, surfaceText, seepText,
+			classOf(surface.Verdict), classOf(seep.Verdict), w.CloudMean)
 }
 
 func explainedWetness(w Window, r Result, grades [6]Verdict) Result {
