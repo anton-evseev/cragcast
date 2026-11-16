@@ -50,7 +50,7 @@ Set these variables in the environment of the scheduled task:
 - `CLOUDFLARE_API_TOKEN`: Cloudflare API token.
 - `CLOUDFLARE_ACCOUNT_ID`: Cloudflare account ID.
 
-`REGION` is optional and defaults to `seattle`.
+`REGION` is optional and defaults to `seattle`. `SCRAPE_RETRIES` (default `2`) and `SCRAPE_RETRY_DELAY` (seconds, default `600`) control how often a failed scrape is retried by the script.
 
 Run the script on a schedule with these variables set:
 
