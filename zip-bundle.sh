@@ -9,9 +9,12 @@ trap 'rm -rf "$work_dir"' EXIT
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+printf '\n==> Scraping %s\n' "$region"
 go run . scrape --region "$region" --out "$work_dir/forecast"
-go run . bundle --region "$region" --from "$work_dir/forecast" --out "$work_dir/bundle"
+printf '\n==> Bundling and checking page sizes (gzip limit 14 KiB)\n'
+go run . bundle --region "$region" --from "$work_dir/forecast" --out "$work_dir/bundle" --check-size
 
+printf '\n==> Zipping\n'
 archive="$HOME/Downloads/bundle-$region-$(date +%Y%m%d-%H%M%S).zip"
 (
     cd "$work_dir/bundle"

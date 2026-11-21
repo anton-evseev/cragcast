@@ -135,6 +135,7 @@ func runBundle(args []string) error {
 	regionId := fs.String("region", "", "region id")
 	from := fs.String("from", "", "directory containing scraped HTML")
 	out := fs.String("out", "", "new directory for static assets")
+	checkSize := fs.Bool("check-size", false, "fail if any HTML page exceeds 14 KiB gzipped")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
@@ -147,5 +148,5 @@ func runBundle(args []string) error {
 	if *from == "" || *out == "" {
 		return fmt.Errorf("bundle: --from and --out are required")
 	}
-	return bundle.Run(bundle.Options{Region: *regionId, From: *from, Out: *out})
+	return bundle.Run(bundle.Options{Region: *regionId, From: *from, Out: *out, CheckSize: *checkSize})
 }
